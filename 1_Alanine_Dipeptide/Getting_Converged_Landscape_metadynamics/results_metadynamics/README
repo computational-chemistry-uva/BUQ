@@ -1,0 +1,1 @@
+plumed sum_hills --hills HILLS --stride 1 --outfile fes/fes_ --bin 100,100
