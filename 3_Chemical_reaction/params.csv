@@ -1,0 +1,7 @@
+lengthscale_0,lengthscale_1,queries,weight_acq_fes,weight_path,noise,kernel_type,full
+0.2, 0.2,50,0.1,0.2,0.0,Matern52,True
+0.2, 0.2,50,0.2,0.0,0.0,Matern52,True
+0.2, 0.2,50,0.1,0.1,0.0,Matern52,True
+0.2, 0.2,50,0.0,0.0,0.0,Matern52,True
+0.2, 0.2,50,0.0,0.1,0.0,Matern52,True
+0.2, 0.2,50,0.1,0.0,0.0,Matern52,True
