@@ -1,5 +1,0 @@
-kappa_es,adaptive_kappa,ns,lengthscale,queries,weight_acq_fes,noise,kernel_type,full
-100,0,15,20,10,0.1,0.0,Matern12,True
-100,0,15,20,10,0.0,0.0,Matern12,True
-100,0,15,20,10,0.1,0.1,Matern12,True
-100,0,15,20,10,0.0,0.1,Matern12,True
