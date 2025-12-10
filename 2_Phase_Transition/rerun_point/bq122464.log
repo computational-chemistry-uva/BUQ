@@ -1,0 +1,18 @@
+/home/ekempke/ice_transition/rerun_point
+hipster-cn007
+Tue Sep 23 14:13:41 CEST 2025
+====
+Number of cores/node:32
+Number of cores/task:1
+SLURM_JOBID=122464
+SLURM_JOB_NODELIST=hipster-cn007
+SLURM_NNODES=1 
+working directory= /home/ekempke/ice_transition/rerun_point 
+tmp directory=/local_scratch
+NPROCS=32
+Number of CPUs per task=1
+Count of processors available to the job on this node=32
+Number of CPUs requested per allocated GPU=
+Number of GPUs requested=
+Number of tasks=32
+cat: run_name.txt: No such file or directory

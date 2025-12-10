@@ -1,0 +1,41 @@
+variable    temperature equal 300.0
+variable    tempDamp equal 100.0
+
+variable    pressure equal 1.
+variable    pressureDamp equal 1000.0 # This is 1 ps
+
+variable    seed equal 745821
+
+units       real
+atom_style  full
+
+read_data   water.data.0
+
+variable    out_freq equal 500
+variable    out_freq2 equal 500
+
+timestep    2.0
+
+neigh_modify    delay 7 every 1
+
+include     in.tip4p
+
+thermo          ${out_freq}
+thermo_style    custom step temp pe etotal epair emol press lx ly lz vol pxx pyy pzz pxy pxz pyz
+
+restart     ${out_freq} restart.lmp restart2.lmp
+
+dump            myDump all atom ${out_freq2} dump.water
+dump_modify     myDump append yes
+
+fix             1 all plumed plumedfile colvars/plumed_177_600.dat outfile plumed_out177.6
+fix             2 all shake 1e-6 200 0 b 1 a 1
+fix             3 all nph iso ${pressure} ${pressure} ${pressureDamp}
+fix             4 all temp/csvr ${temperature} ${temperature} ${tempDamp} ${seed}
+velocity        all create ${temperature} ${seed} dist gaussian
+
+run             7500000
+
+write_data      data.final
+
+write_restart   restart.lmp

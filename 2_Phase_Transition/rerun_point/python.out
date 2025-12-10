@@ -1,0 +1,2 @@
+ /home/ekempke/miniconda3/envs/emukit_env2/lib/python3.11/site-packages/paramz/transformations.py:111: RuntimeWarning:divide by zero encountered in log
+Results saved to PT_15.0_ns_Matern12_ls_20.0_w_0.1_n0.0_kappa_es_100_adaptive0_queries_0_full_PT.txt

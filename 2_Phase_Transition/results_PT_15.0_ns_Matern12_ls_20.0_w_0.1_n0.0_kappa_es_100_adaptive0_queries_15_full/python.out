@@ -1,0 +1,63 @@
+ /home/ekempke/miniconda3/envs/emukit_env2/lib/python3.11/site-packages/paramz/transformations.py:111: RuntimeWarning:divide by zero encountered in log
+ /local_scratch/ekempke/102679/bayesquad_pt_ice.py:491: RuntimeWarning:More than 20 figures have been opened. Figures created through the pyplot interface (`matplotlib.pyplot.figure`) are retained until explicitly closed and may consume too much memory. (To control this warning, see the rcParam `figure.max_open_warning`). Consider using `matplotlib.pyplot.close()`.
+ -------------- BaysOpt loop, query 1 ---------------
+0.9995646882869493
+100.0
+going to run a simulation at 143.04
+ -------------- BaysOpt loop, query 2 ---------------
+0.7061085466965256
+100.0
+going to run a simulation at 72.96
+ -------------- BaysOpt loop, query 3 ---------------
+0.9996244550900697
+100.0
+going to run a simulation at 213.12
+ -------------- BaysOpt loop, query 4 ---------------
+0.47638918238682343
+100.0
+going to run a simulation at 37.44
+ -------------- BaysOpt loop, query 5 ---------------
+0.9657499629406956
+100.0
+going to run a simulation at 248.64
+ -------------- BaysOpt loop, query 6 ---------------
+0.823852517187898
+100.0
+going to run a simulation at 107.52
+ -------------- BaysOpt loop, query 7 ---------------
+0.9960926484144552
+100.0
+going to run a simulation at 177.6
+ -------------- BaysOpt loop, query 8 ---------------
+0.557089198118404
+100.0
+going to run a simulation at 54.72
+ -------------- BaysOpt loop, query 9 ---------------
+0.7836683419187619
+100.0
+going to run a simulation at 266.88
+ -------------- BaysOpt loop, query 10 ---------------
+0.8866318522964708
+100.0
+going to run a simulation at 231.36
+ -------------- BaysOpt loop, query 11 ---------------
+0.8968088301509799
+100.0
+going to run a simulation at 124.8
+ -------------- BaysOpt loop, query 12 ---------------
+0.2682626241954763
+100.0
+going to run a simulation at 20.16
+ -------------- BaysOpt loop, query 13 ---------------
+0.9324391952354735
+100.0
+going to run a simulation at 195.84
+ -------------- BaysOpt loop, query 14 ---------------
+0.7420432899756999
+100.0
+going to run a simulation at 90.24
+ -------------- BaysOpt loop, query 15 ---------------
+0.9998195627956046
+100.0
+going to run a simulation at 160.32
+Results saved to PT_15.0_ns_Matern12_ls_20.0_w_0.1_n0.0_kappa_es_100_adaptive0_queries_15_full_PT.txt
