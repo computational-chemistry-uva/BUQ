@@ -1,0 +1,3 @@
+gmx_mpi grompp -f run.mdp -c final.gro -p topol.top -o md.tpr -maxwarn 1 &> gromp_output
+srun --mpi=pmix_v4 gmx_mpi mdrun -v -deffnm md -plumed plumed.dat &> output_md.out
+

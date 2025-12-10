@@ -1,0 +1,11 @@
+Experiment Name: AD_Matern52_ls_0.75_w_0.1_n0.2_acq_IVR_q_3
+Lengthscale: 0.75
+Queries: 3
+Weight Acquisition FES: 0.1
+Kernel: Matern52
+noise: 0.2
+
+RMSD Results:
+8.643012
+8.047729
+7.480493

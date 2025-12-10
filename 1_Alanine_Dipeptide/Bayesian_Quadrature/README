@@ -1,0 +1,130 @@
+Bayesian Quadrature for Alanine Dipeptide Free Energy Surface Reconstruction
+
+This repository implements a Bayesian Quadrature (BQ) framework for reconstructing the free energy surface (FES) of alanine dipeptide (AD) using molecular dynamics (MD) and Gaussian Process (GP) regression. The system integrates EmuKit (for Bayesian Quadrature), GPy (for Gaussian Process modeling), and GROMACS + PLUMED (for force evaluation at sampled points).
+
+The workflow can be executed in two modes:
+	1.	Grid Mode (bayes_quad_adipep_on_a_grid.py) — performs Bayesian Quadrature using existing ("ground truth") data - so without performing simulations. 
+	2.	Simulation Mode (bayes_quad_adipep_simulations.py) — performs real MD simulations with harmonic restraints at sampled configurations to compute the mean restoring force (gradient) using GROMACS and PLUMED.
+
+A supporting module, helper_functions.py, contains utility functions for kernel construction, integration, plotting, and result management.
+
+⸻
+
+Overal structure:
+
+├── helper_functions.py
+├── bayes_quad_adipep_on_a_grid.py
+├── bayes_quad_adipep_simulations.py
+├── simulations_essentials/
+│   ├── md.tpr                (precompiled GROMACS input)
+│   ├── total_fes.dat         (the ground truth free energy)
+│   ├── md.tpr                (precompiled GROMACS input)
+│   ├── topology, coordinates (if required)
+├── Colvars/                  (generated automatically)
+├── Plots/                    (generated automatically)
+└── params.csv                (parameter sweep configuration)
+
+Repository Contents
+
+1. helper_functions.py
+
+Contains all reusable components and mathematical utilities used by both main scripts:
+	•	Gaussian Process kernel wrappers (RBF + White noise, Matern52 + White noise)
+	•	Quadrature kernel definitions compatible with EmuKit
+	•	Integration utilities for reconstructing 2D FES from gradients
+	•	Plotting utilities for visualizing acquisition functions, FES, and convergence
+	•	I/O utilities such as writing results, PLUMED input files, and reading ground truth data
+	•	System call wrappers for executing shell commands (e.g., GROMACS)
+
+This file defines core computational and visualization logic used by both scripts.
+
+⸻
+
+2. bayes_quad_adipep_on_a_grid.py
+
+Implements Bayesian Quadrature with EmuKit using the analytical FES (the one obtained from a metadynamics simulation).
+No MD simulations are performed; all gradients are computed directly from a predefined FES function.
+
+Purpose: fast prototyping, debugging, and performance comparison between acquisition functions (IVR vs US) and kernel types.
+
+Key parameters (set within the script):
+	•	queries: number of Bayesian updates
+	•	kernel_type: "RBF" or "Matern52"
+	•	acq_function: "IVR" (Integral Variance Reduction) or "US" (Uncertainty Sampling)
+	•	weight_acq_fes: weighting between exploitation (FES minima) and exploration
+	•	noise, lengthscale: GP hyperparameters
+
+Output includes:
+	•	FES reconstruction plots per iteration
+	•	Acquisition function maps
+	•	RMSD vs iteration plots
+	•	Final results file (RMSD, hyperparameters)
+
+Requirements:
+	•	Python packages: numpy, matplotlib, GPy, emukit
+⸻
+
+3. bayes_quad_adipep_simulations.py
+
+Extends the grid-based approach to perform real restrained MD simulations in GROMACS, where each new acquisition point triggers a new simulation run.
+
+Each simulation applies harmonic restraints on φ and ψ dihedral angles, computes mean forces from the resulting trajectory, and feeds them back into the GP model for iterative refinement. In the biasing functions we use the periodic boundaries of phi and psi. 
+
+Simulation Loop Summary:
+	1.	Initialize with a few (φ, ψ) positions.
+	2.	Write a PLUMED restraint file via write_plumed_file().
+	3.	Run GROMACS simulation via srun --mpi=pmix_v4 gmx_mpi mdrun .... (on a cluster, otherwise you can use gmx mdrun)
+	4.	Extract averaged forces using get_force().
+	5.	Update the Gaussian Process model.
+	6.	Integrate predicted derivatives to reconstruct the FES.
+	7.	Select new (φ, ψ) using acquisition function (IVR or US).
+	8.	Repeat until the desired number of queries is reached.
+
+Requirements:
+	•	GROMACS (MPI build)
+	•	PLUMED
+	•	Python packages: numpy, matplotlib, GPy, emukit
+
+
+
+Key Parameters:
+	•	lengthscale: GP kernel lengthscale
+	•	acq_function: "IVR" or "US"
+	•	queries: number of acquisition iterations
+	•	weight_acq_fes: balance between uncertainty sampling and low-energy sampling
+	•	kernel_type: "RBF" or "Matern52"
+	•	noise: Gaussian noise level for GP regression
+
+
+
+
+
+For both, the following holds:
+
+Parallel Execution:
+Can be executed via Slurm array jobs by uncommenting:
+task_id = int(os.environ.get("SLURM_ARRAY_TASK_ID", 0))
+and commeting the 
+task_id = 0
+
+Using slurm, you can save all the results from one particular setting using the following in your submission script:
+
+NAME=$(cat run_name.txt)
+# Create a result folder based on the 'name' variable
+RESULT_DIR=$SLURM_SUBMIT_DIR/result_$NAME
+
+Output Files
+	•	run_name.txt: name tag summarizing hyperparameters and the RMSD data
+	•	*_all_data.dat: sampled (φ, ψ, dFφ, dFψ) points
+	•	Plots per iteration (in Plots/)
+
+Dependencies
+	•	Python 3.9+
+	•	NumPy
+	•	Matplotlib
+	•	GPy
+	•	EmuKit
+	•	GROMACS (MPI build)
+	•	PLUMED
+	•	Optional: srun or mpirun for distributed execution on HPC systems.
+
