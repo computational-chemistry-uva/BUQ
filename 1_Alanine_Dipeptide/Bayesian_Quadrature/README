@@ -1,23 +1,19 @@
 Bayesian Quadrature for Alanine Dipeptide Free Energy Surface Reconstruction
 
-This repository implements a Bayesian Quadrature (BQ) framework for reconstructing the free energy surface (FES) of alanine dipeptide (AD) using molecular dynamics (MD) and Gaussian Process (GP) regression. The system integrates EmuKit (for Bayesian Quadrature), GPy (for Gaussian Process modeling), and GROMACS + PLUMED (for force evaluation at sampled points).
-
-The workflow can be executed in two modes:
-	1.	Grid Mode (bayes_quad_adipep_on_a_grid.py) — performs Bayesian Quadrature using existing ("ground truth") data - so without performing simulations. 
-	2.	Simulation Mode (bayes_quad_adipep_simulations.py) — performs real MD simulations with harmonic restraints at sampled configurations to compute the mean restoring force (gradient) using GROMACS and PLUMED.
+This repository implements a Bayesian Umbrella Quadrature (BUQ) framework for reconstructing the free energy surface (FES) of alanine dipeptide (AD) using molecular dynamics (MD) and Gaussian Process (GP) regression. The system integrates EmuKit (for Bayesian Quadrature), GPy (for Gaussian Process modeling), and GROMACS + PLUMED (for force evaluation at sampled points).
 
 A supporting module, helper_functions.py, contains utility functions for kernel construction, integration, plotting, and result management.
+
 
 ⸻
 
 Overal structure:
 
 ├── helper_functions.py
-├── bayes_quad_adipep_on_a_grid.py
-├── bayes_quad_adipep_simulations.py
+├── bq_adipep.py
 ├── simulations_essentials/
 │   ├── md.tpr                (precompiled GROMACS input)
-│   ├── total_fes.dat         (the ground truth free energy)
+│   ├── fes.dat               (the "ground truth" free energy (the metadynamics surface))
 │   ├── md.tpr                (precompiled GROMACS input)
 │   ├── topology, coordinates (if required)
 ├── Colvars/                  (generated automatically)
@@ -40,31 +36,7 @@ This file defines core computational and visualization logic used by both script
 
 ⸻
 
-2. bayes_quad_adipep_on_a_grid.py
-
-Implements Bayesian Quadrature with EmuKit using the analytical FES (the one obtained from a metadynamics simulation).
-No MD simulations are performed; all gradients are computed directly from a predefined FES function.
-
-Purpose: fast prototyping, debugging, and performance comparison between acquisition functions (IVR vs US) and kernel types.
-
-Key parameters (set within the script):
-	•	queries: number of Bayesian updates
-	•	kernel_type: "RBF" or "Matern52"
-	•	acq_function: "IVR" (Integral Variance Reduction) or "US" (Uncertainty Sampling)
-	•	weight_acq_fes: weighting between exploitation (FES minima) and exploration
-	•	noise, lengthscale: GP hyperparameters
-
-Output includes:
-	•	FES reconstruction plots per iteration
-	•	Acquisition function maps
-	•	RMSD vs iteration plots
-	•	Final results file (RMSD, hyperparameters)
-
-Requirements:
-	•	Python packages: numpy, matplotlib, GPy, emukit
-⸻
-
-3. bayes_quad_adipep_simulations.py
+bq_adipep.py
 
 Extends the grid-based approach to perform real restrained MD simulations in GROMACS, where each new acquisition point triggers a new simulation run.
 
@@ -84,7 +56,6 @@ Requirements:
 	•	GROMACS (MPI build)
 	•	PLUMED
 	•	Python packages: numpy, matplotlib, GPy, emukit
-
 
 
 Key Parameters:
