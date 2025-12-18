@@ -96,3 +96,13 @@ With the parameters:  Matern-5/2, lengthscale 0.2 for both dimensions, exploitat
 Here, the most important datafile is _CR_Matern52_ls_0.2_0.2_w_fes0.1__w_path0.0_n0.0_full_50all_data.dat_ , Which has all the query data including (d1, d2, and sampled ∂A/∂d1, ∂A/∂d2).
 
 
+--------------------------
+------------------------
+
+All dependencies (Conda + pip) are specified in `environment_buq.yml`.
+
+To reproduce the environment:
+
+```bash
+conda env create -f environment_buq.yml
+conda activate buq_env
