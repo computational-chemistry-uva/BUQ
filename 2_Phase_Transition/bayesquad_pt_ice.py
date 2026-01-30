@@ -1,15 +1,10 @@
-
-
-#change the run command when running on the cluster
-
-
-import sys
+#############
 import numpy as np
 import GPy
 from emukit.quadrature.methods import VanillaBayesianQuadrature
 from emukit.model_wrappers.gpy_quadrature_wrappers import \
-    BaseGaussianProcessGPy, RBFGPy
-from emukit.quadrature.kernels import QuadratureRBFLebesgueMeasure, LebesgueEmbedding,QuadratureProductMatern12
+    BaseGaussianProcessGPy
+from emukit.quadrature.kernels import LebesgueEmbedding,QuadratureProductMatern12
 from typing import Union
 from emukit.quadrature.measures import LebesgueMeasure
 from emukit.quadrature.acquisitions import IntegralVarianceReduction
@@ -17,31 +12,21 @@ from emukit.core.optimization import GradientAcquisitionOptimizer
 from emukit.core.parameter_space import ParameterSpace
 from emukit.quadrature.methods import VanillaBayesianQuadrature
 from emukit.model_wrappers.gpy_quadrature_wrappers import \
-    BaseGaussianProcessGPy, RBFGPy
+    BaseGaussianProcessGPy
 import matplotlib.pyplot as plt
 from scipy.integrate import cumulative_trapezoid
 import os
 import subprocess
-from emukit.quadrature.kernels import QuadratureKernel
-from emukit.model_wrappers import GPyModelWrapper
-import emukit.model_wrappers.gpy_quadrature_wrappers as emuwrap
-from numpy import ndarray
-from scipy import optimize as scipy_optimize
 import glob
-from matplotlib.colors import TwoSlopeNorm,Normalize
 import csv
 from emukit.quadrature.interfaces import (
-    IRBF,
-    IBaseGaussianProcess,
-    IBrownian,
-    IProductBrownian,
     IProductMatern12,
-    IProductMatern32,
-    IProductMatern52,
     IStandardKernel
 )
-from typing import List, Optional, Tuple, Union
+from typing import Union
 from scipy.interpolate import interp1d
+
+#########
 
 
 
@@ -154,7 +139,7 @@ class QuadratureProductMatern12LebesgueMeasure(QuadratureProductMatern12, Lebesg
         else:
             ls = float(lengthscales[dim])
         return {
-            "domain": self.measure.domain.bounds[dim],
+            "domain": self.measure.domain.bounds[dim], #fixed this in emukit
             "lengthscale": ls,
             "normalize": self.measure.is_normalized,
         }
@@ -182,25 +167,54 @@ class QuadratureProductMatern12LebesgueMeasure(QuadratureProductMatern12, Lebesg
         return (first_term + second_term) * normalization
 
 def get_force(es, kappa_es, measure_after_ps=1000):
+    """
+    Compute the mean force extered by the umbrella on the similairity parameter.
+
+    The function locates a single COLVAR file corresponding to the target value
+    of 'es', discards data before a given equilibration time, estimates the mean
+    realized value of the collective variable, and computes the average harmonic
+    restoring force.
+
+    Parameters
+    ----------
+    es : float
+        Target (setpoint) value of the collective variable. (environment similarity)
+    kappa_es : float
+        Harmonic force constant associated with the bias.
+    measure_after_ps : float, optional
+        Time threshold (in ps). Only data with time > measure_after_ps
+        are used in the force estimate. Default is 1000.
+
+    Returns
+    -------
+    numpy.ndarray
+        One-dimensional array containing the negative mean restoring force.
+        Shape: (1,).
+    """
+
+    # Format the target value to match the COLVAR filename convention
     es_label = f"{es:.3f}".replace('.', '_')
     pattern = f"colvars/COLVAR_{es_label}.*"
 
-    # Glob for the matching file
+    # Find the COLVAR file matching the target value
     files = glob.glob(pattern)
 
-    if len(files) != 1:
-        raise FileNotFoundError(f"Expected exactly one COLVAR file, found {len(files)} matching: {pattern}")
-
+    # Load COLVAR data (assumes time in column 0, CV value in column 1)
     filename = files[0]
     data = np.genfromtxt(filename)
 
-    mask = data[:,0]> measure_after_ps
+    # Discard data prior to the equilibration time
+    mask = data[:, 0] > measure_after_ps
     data = data[mask]
-    es_real = np.mean(data[:,1])
 
-    force_es = np.mean((es_real - es )*kappa_es)
+    # Mean realized value of the collective variable after equilibration
+    es_real = np.mean(data[:, 1])
+
+    # Mean harmonic restoring force
+    force_es = np.mean((es_real - es) * kappa_es)
+
+    # Return force with sign convention expected by the caller
     return np.array([-force_es])
-
 
 
 def write_custom_plumed_file(es_target, kappa_es,steeringsteps= 250000, equil_steps=250000):
@@ -271,7 +285,7 @@ def write_custom_plumed_file(es_target, kappa_es,steeringsteps= 250000, equil_st
 
 def run_command(command):
     # Build the full srun command for the cluster
-    setup_cmds = f"mpirun -np 32 /home/ekempke/software/lammps_ice/build/lmp -partition 1x32 {command} &> lmp.out"
+    setup_cmds = f"mpirun -np 32 /home/ekempke/software/lammps_ice/build/lmp -partition 1x32 {command} &> lmp.out" # Example command
 
     # Use current environment variables (assuming conda env already active)
     env = os.environ.copy()
@@ -282,147 +296,6 @@ def run_command(command):
         print(f"[ERROR] Command failed: {command}")
         print(e)
 
-
-
-def write_lammps_input(es, nsteps):
-    es_label = f"{es:.3f}".replace('.', '_')
-    
-    filename = f"colvars/input_{es}"
-    content = f"""variable    temperature equal 300.0
-variable    tempDamp equal 100.0
-
-variable    pressure equal 1.
-variable    pressureDamp equal 1000.0 # This is 1 ps
-
-variable    seed equal 745821
-
-units       real
-atom_style  full
-
-read_data   water.data.0
-
-variable    out_freq equal 1000
-variable    out_freq2 equal 1000
-
-timestep    2.0
-
-neigh_modify    delay 7 every 1
-
-include     in.tip4p
-
-thermo          ${{out_freq}}
-thermo_style    custom step temp pe etotal epair emol press lx ly lz vol pxx pyy pzz pxy pxz pyz
-
-restart     ${{out_freq}} restart.lmp restart2.lmp
-
-dump            myDump all atom ${{out_freq2}} colvars/dump_{es_label}.water
-dump_modify     myDump append yes
-
-fix             1 all plumed plumedfile colvars/plumed_{es_label}.dat outfile plumed_out{es}
-fix             2 all shake 1e-6 200 0 b 1 a 1
-fix             3 all nph iso ${{pressure}} ${{pressure}} ${{pressureDamp}}
-fix             4 all temp/csvr ${{temperature}} ${{temperature}} ${{tempDamp}} ${{seed}}
-velocity        all create ${{temperature}} ${{seed}} dist gaussian
-
-run             {nsteps}
-
-write_data      data_{es_label}.final
-
-write_restart   restart.lmp
-"""
-
-    with open(filename, "w") as f:
-        f.write(content)
-
-
-
-
-
-task_id = int(os.environ.get("SLURM_ARRAY_TASK_ID", 0))
-
-# Read CSV manually
-with open("params.csv", "r") as f:
-    reader = csv.DictReader(f)
-    rows = list(reader)
-
-row = rows[task_id]
-
-# Extract parameters
-kappa_es_base = int(row["kappa_es"])
-adaptive_kappa = int(row["adaptive_kappa"])
-ns = float(row["ns"])
-lengthscale = (float(row["lengthscale"]))
-queries = int(row["queries"])
-weight_acq_fes = float(row["weight_acq_fes"])
-noise = float(row["noise"])
-full = row["full"].strip().lower() == "true"  # Convert "True"/"False" to boolean
-
-# Create run name
-
-
-measure_after_ps = 2000
-kappa_es = kappa_es_base  #kj?
-nsteps = int(500000 * ns )
-build_up_steps = 1000
-second_equil= 50000-build_up_steps #half a ns 
-
-
-init_es = np.array([1.6, 3.0, 284.160 , 285.0 ])
-der_1 = []   
-for i in range(len(init_es)):
-    es = init_es[i]
-    write_custom_plumed_file(es,kappa_es=kappa_es, equil_steps= second_equil, steeringsteps=build_up_steps)
-    write_lammps_input(es,nsteps)
-    command = f"-in colvars/input_{es}"
-    run_command(command)
-    forces = get_force(es,kappa_es, measure_after_ps = measure_after_ps)
-    der_1.append(forces[0])
-
-der_1 = np.array(der_1)
-X_data = init_es.reshape(-1, 1)
-force_data = der_1.reshape(-1, 1)  # 2D output
-
-
-
-kernel_type = "Matern12"
-kernel1 = GPy.kern.Exponential(1, lengthscale=lengthscale, variance=1, ARD=True)
-kernel2 = GPy.kern.src.static.White(1,variance = noise)
-kernel = kernel1 + kernel2
-gpy_model = GPy.models.GPRegression(X=X_data, Y=force_data, kernel=kernel)
-emukit_kernel = SumMatern52WhiteGPy(gpy_model.kern)
-
-
-
-
-full_str = "full" if full else "nofull"
-name = f"PT_{ns}_ns_{kernel_type}_ls_{lengthscale}_w_{weight_acq_fes}_n{noise}_kappa_es_{kappa_es_base}_adaptive{adaptive_kappa}_queries_{queries}_{full_str}"
-
-# Save run name
-with open("run_name.txt", "w") as f:
-    f.write(name)
-
-
-
-
-es_lb= 0.0
-es_ub = 288.0
-
-rmsd = []
-save_queries= []
-
-# Create a 2D meshgrid
-
-
-fes_analytical_data = np.genfromtxt("fes_analytical.data")
-
-
-x_grid = fes_analytical_data[:,0]
-
-f_analytical = fes_analytical_data[:,1] #inkjoule/mol
-
-x_pred = x_grid.reshape(-1, 1)
-
-#analytical = analytical/4.184
 
 
 def write_result(rmsd_array, lengthscale, queries, weight_acq_fes, kernel_type, noise, kappa_vol):
@@ -450,10 +323,144 @@ def write_result(rmsd_array, lengthscale, queries, weight_acq_fes, kernel_type, 
     
     print(f"Results saved to {file_path}")
 
+def write_lammps_input(es, nsteps):
+    """
+    Generate a LAMMPS input file for a biased MD simulation with PLUMED.
 
-#%% changeable parameters
+    Parameters
+    ----------
+    es : float
+        Target value of the collective variable. Used to label output,
+        dump, and PLUMED files.
+    nsteps : int
+        Number of MD integration steps to run.
+    """
 
 
+    es_label = f"{es:.3f}".replace('.', '_')
+    
+    filename = f"colvars/input_{es}"
+    content = f"""variable    temperature equal 300.0
+    variable    tempDamp equal 100.0
+
+    variable    pressure equal 1.
+    variable    pressureDamp equal 1000.0 # This is 1 ps
+
+    variable    seed equal 745821
+
+    units       real
+    atom_style  full
+
+    read_data   water.data.0
+
+    variable    out_freq equal 1000
+    variable    out_freq2 equal 1000
+
+    timestep    2.0
+
+    neigh_modify    delay 7 every 1
+
+    include     in.tip4p
+
+    thermo          ${{out_freq}}
+    thermo_style    custom step temp pe etotal epair emol press lx ly lz vol pxx pyy pzz pxy pxz pyz
+
+    restart     ${{out_freq}} restart.lmp restart2.lmp
+
+    dump            myDump all atom ${{out_freq2}} colvars/dump_{es_label}.water
+    dump_modify     myDump append yes
+
+    fix             1 all plumed plumedfile colvars/plumed_{es_label}.dat outfile plumed_out{es}
+    fix             2 all shake 1e-6 200 0 b 1 a 1
+    fix             3 all nph iso ${{pressure}} ${{pressure}} ${{pressureDamp}}
+    fix             4 all temp/csvr ${{temperature}} ${{temperature}} ${{tempDamp}} ${{seed}}
+    velocity        all create ${{temperature}} ${{seed}} dist gaussian
+
+    run             {nsteps}
+
+    write_data      data_{es_label}.final
+
+    write_restart   restart.lmp
+    """
+
+    with open(filename, "w") as f:
+        f.write(content)
+
+
+
+
+
+
+# Read parameters from CSV based on SLURM_ARRAY_TASK_ID, for running on slurm cluster
+task_id = int(os.environ.get("SLURM_ARRAY_TASK_ID", 0))
+# Read CSV manually
+with open("params.csv", "r") as f:
+    reader = csv.DictReader(f)
+    rows = list(reader)
+row = rows[task_id]
+
+# Extract changable parameters
+kappa_es_base = int(row["kappa_es"]) #base value of kappa
+adaptive_kappa = int(row["adaptive_kappa"]) # can be used to increase kappa based on free energy estimate
+ns = float(row["ns"]) #number of ns to run
+lengthscale = (float(row["lengthscale"])) #lengthscale of the kernel
+queries = int(row["queries"]) #number of queries
+weight_acq_fes = float(row["weight_acq_fes"]) #weight of the exploiting term in the acquisition function
+noise = float(row["noise"]) # noise level in the GP model
+full = row["full"].strip().lower() == "true"  # whether to save full fes plots
+
+
+
+measure_after_ps = 2000 #time after which to measure the force in ps
+kappa_es = kappa_es_base  #kappa value for the first runs
+nsteps = int(500000 * ns )  #number of steps to run, 500000 steps is 1 ns with 2 fs timestep
+build_up_steps = 1000 # to build up the bias 
+second_equil= 50000-build_up_steps #half a ns in total (including bias build up)
+es_lb= 0.0
+es_ub = 288.0
+rmsd = []
+save_queries= []
+# Get the data from Piaggi, P. M. & Car, R. The J. chemical physics 152 (2020)
+fes_analytical_data = np.genfromtxt("fes_analytical.data")
+x_grid = fes_analytical_data[:,0]
+f_analytical = fes_analytical_data[:,1] #inkjoule/mol
+x_pred = x_grid.reshape(-1, 1)
+
+#First, run the bootstrapdata
+init_es = np.array([1.6, 3.0, 284.160 , 285.0 ]) #initial points to run
+der_1 = np.zeros(len(init_es))  
+for i in range(len(init_es)):
+    es = init_es[i]
+    #prepare and run simulation
+    write_custom_plumed_file(es,kappa_es=kappa_es, equil_steps= second_equil, steeringsteps=build_up_steps)
+    write_lammps_input(es,nsteps)
+    command = f"-in colvars/input_{es}"
+    run_command(command) #run it
+    forces = get_force(es,kappa_es, measure_after_ps = measure_after_ps) #extract force
+    der_1[i] = forces[0]
+
+X_data = init_es.reshape(-1, 1) #reshape data for emukit
+force_data = der_1.reshape(-1, 1)  
+
+
+#setup the GP model with the bootstrap data
+kernel_type = "Matern12"
+kernel1 = GPy.kern.Exponential(1, lengthscale=lengthscale, variance=1, ARD=True)
+kernel2 = GPy.kern.src.static.White(1,variance = noise)
+kernel = kernel1 + kernel2
+gpy_model = GPy.models.GPRegression(X=X_data, Y=force_data, kernel=kernel)
+emukit_kernel = SumMatern52WhiteGPy(gpy_model.kern)
+
+
+
+#This is just to save the run name for later identification (also in SLURM)
+full_str = "full" if full else "nofull"
+name = f"PT_{ns}_ns_{kernel_type}_ls_{lengthscale}_w_{weight_acq_fes}_n{noise}_kappa_es_{kappa_es_base}_adaptive{adaptive_kappa}_queries_{queries}_{full_str}"
+# Save run name
+with open("run_name.txt", "w") as f:
+    f.write(name)
+
+# Wrap the GPy model for EmuKit
 emukit_measure = LebesgueMeasure.from_bounds(bounds=[(es_lb, es_ub)])
 emukit_qrbf = QuadratureProductMatern12LebesgueMeasure(emukit_kernel, emukit_measure)
 emukit_model = BaseGaussianProcessGPy(kern=emukit_qrbf, gpy_model=gpy_model)
@@ -464,73 +471,77 @@ ivr_acquisition = IntegralVarianceReduction(emukit_method)
 space = ParameterSpace(emukit_method.reasonable_box_bounds.convert_to_list_of_continuous_parameters())
 optimizer = GradientAcquisitionOptimizer(space)
 weight_acq_ivr = 1.0 - weight_acq_fes
+
+
+#first prediction of the Free energy
 predicted_derivative, _ = emukit_method.predict(x_pred)
 bq_integral = cumulative_trapezoid(predicted_derivative[:, 0], x_grid, initial=0)
 bq_integral -= np.min(bq_integral)
 
-#%%
-        
+#write down the data so far        
 with open(name +"all_data.dat", "w") as f:
     for i in range(len(emukit_method.X)):
         f.write(f"{i+1} \t {emukit_method.X[i]} \t {emukit_method.Y[i]} \n")
     
 
-for i in range(1,queries+1): #10
+for i in range(1,queries+1): 
     print(f" -------------- BaysOpt loop, query {i} ---------------")
     
+    # Evaluate acquisition functions on the prediction grid
     ivr_plot = ivr_acquisition.evaluate(x_pred).flatten()
     ivr_plot = ivr_plot / np.max(ivr_plot)
-
     scaled_free_energy = bq_integral / np.max(bq_integral)  # voor introduction alpha
     together = +weight_acq_ivr * ivr_plot - weight_acq_fes * scaled_free_energy
-
     max_index_together = np.unravel_index(np.argmax(together), together.shape)  # alpha kan hier weer bij
-
     new_x_ivr = x_grid[max_index_together]
     
-    plt.figure()
+    if full: #then make a plot of the acq functions
+        plt.figure()
+        plt.plot(x_grid, ivr_plot, label="IVR Acquisition", color='green')
+        plt.plot(x_grid, scaled_free_energy, label="Scaled Free Energy", color='blue')
+        plt.plot(x_grid, together, label="Combined Acquisition", color='red')
+        plt.axvline(new_x_ivr, color='black', linestyle='--', label='Next Query Point')
+        plt.title(f"Acquisition Functions and Next Query Point (Iter {i})")
+        plt.savefig(name + f"acq_iter_{i}.png")
 
-    plt.plot(x_grid, ivr_plot, label="IVR Acquisition", color='green')
-    plt.plot(x_grid, scaled_free_energy, label="Scaled Free Energy", color='blue')
-    plt.plot(x_grid, together, label="Combined Acquisition", color='red')
-    plt.axvline(new_x_ivr, color='black', linestyle='--', label='Next Query Point')
-    plt.title(f"Acquisition Functions and Next Query Point (Iter {i})")
-    plt.savefig(name + f"acq_iter_{i}.png")
+
+    free_energy_value  = scaled_free_energy[max_index_together]  
+    kappa_es = kappa_es_base + adaptive_kappa * free_energy_value #adapt kappa based on free energy estimate of that point
 
 
-    free_energy_value  = scaled_free_energy[max_index_together]
-    
-    kappa_es = kappa_es_base + adaptive_kappa * free_energy_value
-    print(free_energy_value)
-    print(kappa_es)
     print(f"going to run a simulation at {new_x_ivr }")
+    #set up simulation
     write_custom_plumed_file(new_x_ivr, kappa_es=kappa_es, equil_steps= second_equil, steeringsteps=build_up_steps)
     write_lammps_input(new_x_ivr,nsteps)
     command = f"-in colvars/input_{new_x_ivr}"
       
-    run_command(command)
+    run_command(command) #run it
 
+    #get force data
     force_x  = get_force(new_x_ivr,kappa_es, measure_after_ps = measure_after_ps) 
-    force_xy =np.array([force_x])
-    xy_new = np.array([[new_x_ivr]])
-    X_data = np.vstack([X_data, xy_new])
 
+    force_x = np.array([force_x])
+    x_new = np.array([[new_x_ivr]])
 
-    force_data = np.vstack([force_data, force_xy])
-    emukit_method.set_data(X_data, force_data)
-    with open(name + "all_data.dat", "a") as f:  # 'a' mode to append
+    X_data = np.vstack([X_data, x_new])
+    force_data = np.vstack([force_data, force_x])
+
+    emukit_method.set_data(X_data, force_data) #append data to the model
+
+    with open(name + "all_data.dat", "a") as f:  #append data to file
         f.write(f"{i} \t {emukit_method.X[-1]} \t   {emukit_method.Y[-1]} \n")
     
         
-    predicted_derivative, _ = emukit_method.predict(x_pred)
+    predicted_derivative, _ = emukit_method.predict(x_pred)   #current prediction
     bq_integral = cumulative_trapezoid(predicted_derivative[:, 0], x_grid, initial=0)
     bq_integral -= np.min(bq_integral)
     
     rmsd_query = np.sqrt(np.mean((f_analytical - bq_integral) ** 2))
     rmsd.append(rmsd_query)
     save_queries.append(i)
+
     if full:
-                # Create new plot each time
+         # Create new plot each time
         fig, ax = plt.subplots(figsize=(10, 6))
         
         # Plot true and predicted integrals
@@ -546,9 +557,14 @@ for i in range(1,queries+1): #10
 
         plt.savefig(name + f"fes_iter_{i}.png")
 
+
+
+# Final plot after all queries
 predicted_derivative, _ = emukit_method.predict(x_pred)
 bq_integral = cumulative_trapezoid(predicted_derivative[:, 0], x_grid, initial=0)
 bq_integral -= np.min(bq_integral)
+
+
 
 fig, ax = plt.subplots(figsize=(10, 6))
 
@@ -565,8 +581,6 @@ ax.scatter(X_data[:, 0], queried_y, color='red', label="Queried Points", zorder=
 
 # Adjust layout
 plt.savefig(name+"fes.png")
-
-# Show the combined figure
 plt.show()
 
 rmsd_arr= np.array(rmsd)
