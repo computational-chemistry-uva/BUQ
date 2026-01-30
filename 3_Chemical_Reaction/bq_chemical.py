@@ -1,14 +1,9 @@
-
-
-#change the run command when running on the cluster
-
-
 import sys
 import numpy as np
 import GPy
 from emukit.quadrature.methods import VanillaBayesianQuadrature
 from emukit.model_wrappers.gpy_quadrature_wrappers import \
-    BaseGaussianProcessGPy, RBFGPy
+    BaseGaussianProcessGPy
 from emukit.quadrature.kernels import QuadratureRBFLebesgueMeasure
 from emukit.quadrature.measures import LebesgueMeasure
 from emukit.quadrature.acquisitions import IntegralVarianceReduction
@@ -16,18 +11,12 @@ from emukit.core.optimization import GradientAcquisitionOptimizer
 from emukit.core.parameter_space import ParameterSpace
 from emukit.quadrature.methods import VanillaBayesianQuadrature
 from emukit.model_wrappers.gpy_quadrature_wrappers import \
-    BaseGaussianProcessGPy, RBFGPy
+    BaseGaussianProcessGPy
 import matplotlib.pyplot as plt
-from scipy.integrate import cumulative_trapezoid
 import os
-import subprocess
-from emukit.quadrature.kernels import QuadratureKernel
-from emukit.model_wrappers import GPyModelWrapper
-import emukit.model_wrappers.gpy_quadrature_wrappers as emuwrap
 from numpy import ndarray
 from scipy import optimize as scipy_optimize
 import glob
-from matplotlib.colors import TwoSlopeNorm,Normalize
 import csv
 from ase import units
 from ase.md.bussi import Bussi
@@ -36,21 +25,12 @@ from ase.io import read, write
 from emukit.quadrature.kernels import QuadratureProductMatern52,LebesgueEmbedding
 from typing import Union
 from mace.calculators import MACECalculator
-
 from ase.calculators.plumed import Plumed
-
 from emukit.quadrature.interfaces import (
-    IRBF,
-    IBaseGaussianProcess,
-    IBrownian,
-    IProductBrownian,
-    IProductMatern12,
-    IProductMatern32,
     IProductMatern52,
     IStandardKernel
 )
-
-from typing import List, Optional, Tuple, Union
+from typing import Union
 
 
 class SumRBFWhiteGPy(IStandardKernel):
@@ -92,8 +72,6 @@ class SumRBFWhiteGPy(IStandardKernel):
 
     def dKdiag_dx(self, x: np.ndarray) -> np.ndarray:
         return np.zeros((x.shape[1], x.shape[0]))
-
-
 class SumMatern52WhiteGPy(IStandardKernel):
     """
     Wrapper for a sum of GPy Matern and White kernels to be used in Emukit quadrature.
@@ -134,7 +112,6 @@ class SumMatern52WhiteGPy(IStandardKernel):
     def dKdiag_dx(self, x: np.ndarray) -> np.ndarray:
         return np.zeros((x.shape[1], x.shape[0]))
 
-
 class QuadratureProductMatern52LebesgueMeasure(QuadratureProductMatern52, LebesgueEmbedding):
     """A product Matern52 kernel augmented with integrability w.r.t. the standard Lebesgue measure.
 
@@ -162,7 +139,7 @@ class QuadratureProductMatern52LebesgueMeasure(QuadratureProductMatern52, Lebesg
         else:
             ls = float(lengthscales[dim])
         return {
-            "domain": self.measure.domain.bounds[dim],
+            "domain": self.measure.domain.bounds[dim], 
             "lengthscale": ls,
             "normalize": self.measure.is_normalized,
         }
@@ -206,6 +183,21 @@ class QuadratureProductMatern52LebesgueMeasure(QuadratureProductMatern52, Lebesg
         return (first_term + second_term) * normalization
 
 def do_simulation(d2,d1):
+    """
+    Run a biased molecular dynamics simulation with PLUMED using a MACE potential.
+
+    The simulation steers two C–X bond distances independently rather than their
+    difference, due to the stiffness of the C–F bond. Angular restraints are applied
+    to control molecular geometry during the pulling process. Trajectories and
+    collective variables are written to disk for post-processing.
+
+    Parameters
+    ----------
+    d2 : float
+        Target value (in Å) for the second distance collective variable.
+    d1 : float
+        Target value (in Å) for the first distance collective variable.
+    """
 
     timestep = 0.5 * units.fs
     atoms = read('p.xyz', '0')
@@ -239,40 +231,33 @@ def do_simulation(d2,d1):
     def write_frame():
         dyn.atoms.write(f'colvars/t_{d1}_{d2}.xyz', append=True)
     dyn.attach(write_frame, interval=500)
-
     dyn.run(80000)
 
 
-task_id = int(os.environ.get("SLURM_ARRAY_TASK_ID", 0))
-
-# Read CSV manually
-with open("params.csv", "r") as f:
-    reader = csv.DictReader(f)
-    rows = list(reader)
-
-row = rows[task_id]
-
-# Extract parameters
-
-lengthscale = (float(row["lengthscale_0"]), float(row["lengthscale_1"]))
-queries = int(row["queries"])
-weight_acq_fes = float(row["weight_acq_fes"])
-weight_path = float(row["weight_path"]) 
-
-noise = float(row["noise"])
-kernel_type = row["kernel_type"]
-full = row["full"].strip().lower() == "true"  # Convert "True"/"False" to boolean
-# Create run name
-
-
-measure_after_ps = 10
-
-
-# full=False
-
-# kernel_type = "Matern52" #RBF
-
 def get_force(d2,d1,kappa_d2=100,kappa_d1= 1000, measure_after_ps=measure_after_ps):
+    """
+    Compute mean restoring forces for two the two distance collective variables.
+
+    Parameters
+    ----------
+    d2 : float
+        Target value (in Å) for the second distance collective variable.
+    d1 : float
+        Target value (in Å) for the first distance collective variable.
+    kappa_d2 : float, optional
+        Harmonic force constant associated with d2. Default is 100.
+    kappa_d1 : float, optional
+        Harmonic force constant associated with d1. Default is 1000.
+    measure_after_ps : float, optional
+        Time threshold (in ps). Only data with time > measure_after_ps
+        are used in the force estimate.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array containing the negative mean restoring forces
+        [F_d2, F_d1].
+    """
     pattern = f"colvars/COLVAR_{d1}_{d2}*"
 
     # Glob for the matching file
@@ -295,86 +280,6 @@ def get_force(d2,d1,kappa_d2=100,kappa_d1= 1000, measure_after_ps=measure_after_
     return np.array([-force_d2,-force_d1])
 
 
-d2_lb = 1.8
-d2_ub = 3.5
-
-d1_lb= 1.2
-d1_ub = 2.8
-
-
-#%% standard parameters DO NOT CHANGE
-init_d2 = np.array([ 1.84,  2.6,3.468 ])
-der_d2 = []
-
-init_d1 = np.array([ 2.64,1.6,1.413])
-der_d1 = []   
-for i in range(3):
-    d2 = init_d2[i]
-    d1 = init_d1[i]
-    print(f"Running simulation for d2={d2}, d1={d1}")
-    do_simulation(d2,d1)
-    forces = get_force(d2,d1, measure_after_ps = measure_after_ps)
-    der_d2.append(forces[0])
-    der_d1.append(forces[1])
-
-der_d1 = np.array(der_d1)
-der_d2 = np.array(der_d2)
-
-X_data = np.column_stack((init_d2, init_d1))
-force_data =  np.column_stack((der_d2, der_d1))
-force_data = np.array(force_data).reshape(-1, 2)  # 2D output
-
-
-if kernel_type == "RBF":
-    kernel1 = GPy.kern.RBF(2, lengthscale=lengthscale, variance=1, ARD=True)
-    kernel2 = GPy.kern.src.static.White(2,variance = noise)
-    kernel = kernel1 + kernel2
-    gpy_model = GPy.models.GPRegression(X=X_data, Y=force_data, kernel=kernel)
-    emukit_kernel = SumRBFWhiteGPy(gpy_model.kern)
-    emukit_measure = LebesgueMeasure.from_bounds(bounds=[(d2_lb, d2_ub), (d1_lb, d1_ub)])
-    emukit_qrbf = QuadratureRBFLebesgueMeasure(emukit_kernel, emukit_measure)       
-
-elif kernel_type == "Matern52":
-    kernel1 = GPy.kern.Matern52(2, lengthscale=lengthscale, variance=1, ARD=True)
-    kernel2 = GPy.kern.src.static.White(2,variance = noise)
-    kernel = kernel1 + kernel2
-    gpy_model = GPy.models.GPRegression(X=X_data, Y=force_data, kernel=kernel)
-    emukit_kernel = SumMatern52WhiteGPy(gpy_model.kern)
-    emukit_measure = LebesgueMeasure.from_bounds(bounds=[(d2_lb, d2_ub), (d1_lb, d1_ub)])
-    emukit_qrbf = QuadratureProductMatern52LebesgueMeasure(emukit_kernel, emukit_measure)       
-
-
-
-
-
-lengthscale_str = "_".join(map(str, lengthscale))
-full_str = "full" if full else "nofull"
-name = f"PT_{kernel_type}_ls_{lengthscale_str}_w_fes{weight_acq_fes}__w_path{weight_path}_n{noise}_{full_str}_{queries}"
-
-# Save run name
-with open("run_name.txt", "w") as f:
-    f.write(name)
-
-
-
-
-rmsd = []
-save_queries= []
-
-# Create a 2D m
-
-x_grid = np.linspace(d2_lb, d2_ub, num=60)
-y_grid = np.linspace(d1_lb, d1_ub, num= 60)
-X, Y = np.meshgrid(x_grid, y_grid, indexing='ij')
-X_flat = np.vstack([X.ravel(), Y.ravel()]).T
-
-
-
-lower_line = 3.1 - 0.7 * X
-upper_line = 3.96 - 0.7 * X
-
-# Create mask: 1 if Y between the lines, else 0
-sampling_grid = np.logical_and(Y >= lower_line, Y <= upper_line).astype(int)
 
 def integration_2D_rgrid(
         grid: ndarray,
@@ -499,7 +404,108 @@ def write_result(rmsd_array, lengthscale, queries, weight_acq_fes, kernel_type, 
     print(f"Results saved to {file_path}")
 
 
-#%% changeable parameters
+# Get SLURM array task ID
+task_id = int(os.environ.get("SLURM_ARRAY_TASK_ID", 0))
+
+# Read CSV manually
+with open("params.csv", "r") as f:
+    reader = csv.DictReader(f)
+    rows = list(reader)
+
+row = rows[task_id]
+
+# Extract parameters
+
+lengthscale = (float(row["lengthscale_0"]), float(row["lengthscale_1"])) #lengthscale for d2 and d1
+queries = int(row["queries"]) #number of queries
+weight_acq_fes = float(row["weight_acq_fes"]) #exploitation weight  
+weight_path = float(row["weight_path"])  #possibility to add path sampling weight, where we sample more in the shortest distance between the product and the reaction
+noise = float(row["noise"]) # noise level in the GP
+kernel_type = row["kernel_type"] # RBF or Matern52
+full = row["full"].strip().lower() == "true"  #whether to save all plots or only final
+
+
+
+
+measure_after_ps = 10
+# bounds for d2 and d1
+d2_lb = 1.8
+d2_ub = 3.5
+d1_lb= 1.2
+d1_ub = 2.8
+
+init_d2 = np.array([ 1.84,  2.6,3.468 ])
+init_d1 = np.array([ 2.64,1.6,1.413])
+
+der_d2 = np.zeros(len(init_d2))
+der_d1 = np.zeros(len(init_d1))
+
+rmsd = []
+save_queries= []
+
+
+x_grid = np.linspace(d2_lb, d2_ub, num=60)
+y_grid = np.linspace(d1_lb, d1_ub, num= 60)
+X, Y = np.meshgrid(x_grid, y_grid, indexing='ij')
+X_flat = np.vstack([X.ravel(), Y.ravel()]).T
+
+
+
+lower_line = 3.1 - 0.7 * X
+upper_line = 3.96 - 0.7 * X
+
+# Create mask: 1 if Y between the lines, else 0
+sampling_grid = np.logical_and(Y >= lower_line, Y <= upper_line).astype(int)
+
+#getting initial values
+for i in range(len(init_d2)):
+    d2 = init_d2[i]
+    d1 = init_d1[i]
+    print(f"Running simulation for d2={d2}, d1={d1}")
+    do_simulation(d2,d1)
+    forces = get_force(d2,d1, measure_after_ps = measure_after_ps)
+    der_d2[i]= forces[0]    
+    der_d1[i]= forces[1]
+
+
+
+X_data = np.column_stack((init_d2, init_d1))
+force_data =  np.column_stack((der_d2, der_d1))
+force_data = np.array(force_data).reshape(-1, 2)  # 2D output
+
+
+
+#setting up the GPy model and Emukit kernel based on chosen kernel type
+if kernel_type == "RBF":
+    kernel1 = GPy.kern.RBF(2, lengthscale=lengthscale, variance=1, ARD=True)
+    kernel2 = GPy.kern.src.static.White(2,variance = noise)
+    kernel = kernel1 + kernel2
+    gpy_model = GPy.models.GPRegression(X=X_data, Y=force_data, kernel=kernel)
+    emukit_kernel = SumRBFWhiteGPy(gpy_model.kern)
+    emukit_measure = LebesgueMeasure.from_bounds(bounds=[(d2_lb, d2_ub), (d1_lb, d1_ub)])
+    emukit_qrbf = QuadratureRBFLebesgueMeasure(emukit_kernel, emukit_measure)       
+
+elif kernel_type == "Matern52":
+    kernel1 = GPy.kern.Matern52(2, lengthscale=lengthscale, variance=1, ARD=True)
+    kernel2 = GPy.kern.src.static.White(2,variance = noise)
+    kernel = kernel1 + kernel2
+    gpy_model = GPy.models.GPRegression(X=X_data, Y=force_data, kernel=kernel)
+    emukit_kernel = SumMatern52WhiteGPy(gpy_model.kern)
+    emukit_measure = LebesgueMeasure.from_bounds(bounds=[(d2_lb, d2_ub), (d1_lb, d1_ub)])
+    emukit_qrbf = QuadratureProductMatern52LebesgueMeasure(emukit_kernel, emukit_measure)       
+
+
+
+
+# Save run name
+lengthscale_str = "_".join(map(str, lengthscale))
+full_str = "full" if full else "nofull"
+name = f"PT_{kernel_type}_ls_{lengthscale_str}_w_fes{weight_acq_fes}__w_path{weight_path}_n{noise}_{full_str}_{queries}"
+with open("run_name.txt", "w") as f:
+    f.write(name)
+
+
+
 
 
 emukit_model = BaseGaussianProcessGPy(kern=emukit_qrbf, gpy_model=gpy_model)
@@ -515,52 +521,53 @@ predicted_derivatives = predicted_derivatives.reshape(X.shape[0], Y.shape[1], 2)
 XY_combined = np.stack((Y,X),axis=-1)
 derivative_xy_combined = np.stack((predicted_derivatives[:, :, 1],predicted_derivatives[:, :, 0]),axis=-1)
 bq_int = integration_2D_rgrid(XY_combined,derivative_xy_combined, "simpson+mini")
-bq_int = bq_int 
-#%%
-        
+bq_int = bq_int  #first prediction
+
+
+
+
+#save first data points        
 with open(name +"all_data.dat", "w") as f:
     for i in range(len(emukit_method.X)):
         f.write(f"{i+1} \t {emukit_method.X[i][0]} \t {emukit_method.X[i][1]} \t {emukit_method.Y[i][0]} \t {emukit_method.Y[i][1]}  \n")
     
 
-for i in range(1,queries+1): #10
+#BUQ loop
+for i in range(1,queries+1): 
     print(f" -------------- BaysOpt loop, query {i} ---------------")
     
     ivr_plot = ivr_acquisition.evaluate(X_flat)
     ivr_plot = ivr_plot.reshape(X.shape) / np.max(ivr_plot)
-    
-    scaled_free_energy = bq_int/np.max(bq_int)# voor introduction alpha
+    scaled_free_energy = bq_int/np.max(bq_int)
     together = + weight_acq_ivr*ivr_plot -weight_acq_fes* scaled_free_energy + weight_path * sampling_grid
-   
-    max_index_together = np.unravel_index(np.argmax(together), together.shape) #alpha kan hier weer bij
+    max_index_together = np.unravel_index(np.argmax(together), together.shape) 
     new_x_ivr = X[max_index_together]
     new_y_ivr = Y[max_index_together]   
-
     free_energy_value  = scaled_free_energy[max_index_together]
     
 
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    if full:
+        fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+        # --- Plot 1: IVR ---
+        contour1 = axes[0].contourf(X, Y, ivr_plot, levels=100, cmap="viridis")
+        cbar1 = fig.colorbar(contour1, ax=axes[0], shrink=0.8, aspect=30, pad=0.02)
+        cbar1.set_label("IVR")
+        axes[0].set_title(f"IVR Contour Plot, {i}")
 
-    # --- Plot 1: IVR ---
-    contour1 = axes[0].contourf(X, Y, ivr_plot, levels=100, cmap="viridis")
-    cbar1 = fig.colorbar(contour1, ax=axes[0], shrink=0.8, aspect=30, pad=0.02)
-    cbar1.set_label("IVR")
-    axes[0].set_title(f"IVR Contour Plot, {i}")
+        # --- Plot 2: Scaled Free Energy ---
+        contour2 = axes[1].contourf(X, Y, scaled_free_energy, levels=100, cmap="plasma")
+        cbar2 = fig.colorbar(contour2, ax=axes[1], shrink=0.8, aspect=30, pad=0.02)
+        cbar2.set_label("Scaled Free Energy")
+        axes[1].set_title(f"Scaled Free Energy, {i}")
 
-    # --- Plot 2: Scaled Free Energy ---
-    contour2 = axes[1].contourf(X, Y, scaled_free_energy, levels=100, cmap="plasma")
-    cbar2 = fig.colorbar(contour2, ax=axes[1], shrink=0.8, aspect=30, pad=0.02)
-    cbar2.set_label("Scaled Free Energy")
-    axes[1].set_title(f"Scaled Free Energy, {i}")
+        # --- Plot 3: Together ---
+        contour3 = axes[2].contourf(X, Y, together, levels=100, cmap="cividis")
+        cbar3 = fig.colorbar(contour3, ax=axes[2], shrink=0.8, aspect=30, pad=0.02)
+        cbar3.set_label("Combined")
+        axes[2].set_title(f"Combined acqui, {i}")
 
-    # --- Plot 3: Together ---
-    contour3 = axes[2].contourf(X, Y, together, levels=100, cmap="cividis")
-    cbar3 = fig.colorbar(contour3, ax=axes[2], shrink=0.8, aspect=30, pad=0.02)
-    cbar3.set_label("Combined")
-    axes[2].set_title(f"Combined acqui, {i}")
-
-    plt.savefig(name + f"_acqui_{i}.png", dpi=300)
-    plt.show()
+        plt.savefig(name + f"_acqui_{i}.png", dpi=300)
+        plt.show()
 
 
 
@@ -570,14 +577,15 @@ for i in range(1,queries+1): #10
     print(f"going to run a simulation at {new_x_ivr} {new_y_ivr} ")
     
     do_simulation(new_x_ivr,new_y_ivr)
-
     force_x, force_y  = get_force(new_x_ivr,new_y_ivr, measure_after_ps = measure_after_ps) 
     force_xy =np.array([force_x,force_y])
     xy_new = np.array([[new_x_ivr,new_y_ivr]])
     X_data = np.append(X_data, xy_new, axis=0)
     force_data = np.vstack([force_data, force_xy])
+
+
     emukit_method.set_data(X_data, force_data)
-    with open(name + "all_data.dat", "a") as f:  # 'a' mode to append
+    with open(name + "all_data.dat", "a") as f: 
         f.write(f"{i} \t {emukit_method.X[-1][0]} \t {emukit_method.X[-1][1]}   \t {emukit_method.Y[-1][0]} \t {emukit_method.Y[-1][1]} \n")
     
         
@@ -587,9 +595,6 @@ for i in range(1,queries+1): #10
     derivative_xy_combined = np.stack((predicted_derivatives[:, :, 1],predicted_derivatives[:, :, 0]),axis=-1)
  
     bq_int = integration_2D_rgrid(XY_combined,derivative_xy_combined, "simpson+mini")
-
-
-
     save_queries.append(i)
     if full:
          fig = plt.figure(figsize=(14, 12))
@@ -599,12 +604,15 @@ for i in range(1,queries+1): #10
          ax.set_title("Prediction using Bayesian Quadrature", fontsize=16)
          ax.scatter(emukit_method.X[:, 0], emukit_method.X[:, 1], color="white")
 
-         plt.colorbar(contour, ax=ax)  # Optional: adds color scale
+         plt.colorbar(contour, ax=ax)  
          plt.savefig(name + f"fes_after_{i}.png")
-            # Show the combined figure
          plt.show()
             
 
+
+
+
+#final  plot
 predicted_derivatives, _ = emukit_method.predict(X_flat)
 predicted_derivatives = predicted_derivatives.reshape(X.shape[0], Y.shape[1], 2)
 XY_combined = np.stack((Y,X),axis=-1)

@@ -1,0 +1,80 @@
+#!/bin/bash
+#SBATCH --array=0-9  # Adjust this based on your param rows
+#SBATCH --job-name=bq_reaction
+#SBATCH --output=bq%j.log     
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
+#SBATCH --gres=gpu:1
+#SBATCH --partition= your_partition_name
+#SBATCH --mem=100G
+#SBATCH --time=7-00:00:00
+
+export TMPDIR=/local_scratch
+
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate mace # Your conda environment with necessary packages
+
+
+# Optional: explicitly load MPI modules if not already handled via Conda
+module load intel/2023.2.1 mpi/2021.14
+
+
+# Get the 'name' from the Python script's output
+
+pwd; hostname; date
+echo "===="
+echo "Number of cores/node:$SLURM_CPUS_ON_NODE"
+echo "Number of cores/task:$SLURM_CPUS_PER_TASK"
+
+echo "SLURM_JOBID=$SLURM_JOBID"
+echo "SLURM_JOB_NODELIST=$SLURM_JOB_NODELIST"
+echo "SLURM_NNODES=$SLURM_NNODES "
+echo "working directory= $SLURM_SUBMIT_DIR "
+echo "tmp directory=$TMPDIR"
+echo "NPROCS=$SLURM_NPROCS"
+echo "Number of CPUs per task=$SLURM_CPUS_PER_TASK"
+echo "Count of processors available to the job on this node=$SLURM_JOB_CPUS_PER_NODE"
+echo "Number of CPUs requested per allocated GPU=$SLURM_CPUS_PER_GPU"
+echo "Number of GPUs requested=$SLURM_GPUS"
+echo "Number of tasks=$SLURM_NTASKS"
+
+# no coredumps
+ulimit -S -c 0
+ulimit -s unlimited
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+
+# Create a scratch directory for the job
+mkdir -p $TMPDIR/$USER/$SLURM_JOBID
+mkdir -p $TMPDIR/$USER/$SLURM_JOBID/colvars
+cp -r $SLURM_SUBMIT_DIR/MACE_2_swa.model $TMPDIR/$USER/$SLURM_JOBID
+cp -r $SLURM_SUBMIT_DIR/p.xyz $TMPDIR/$USER/$SLURM_JOBID
+cp -r $SLURM_SUBMIT_DIR/bq_chemical.py $TMPDIR/$USER/$SLURM_JOBID
+cp -r $SLURM_SUBMIT_DIR/params.csv $TMPDIR/$USER/$SLURM_JOBID
+
+cd $TMPDIR/$USER/$SLURM_JOBID
+echo "Job started at: $(date)" > slurm-job-time.log
+
+# Run the Python script
+python bq_chemical.py &> python.out
+echo "Job ended at: $(date)" >> slurm-job-time.log
+
+NAME=$(cat run_name.txt)
+
+# Create a result folder based on the 'name' variable
+RESULT_DIR=$SLURM_SUBMIT_DIR/results_CR_$NAME
+
+# If the folder doesn't exist, create it
+if [ ! -d "$RESULT_DIR" ]; then
+    mkdir -p "$RESULT_DIR"
+fi
+
+# Copy the necessary results to the new folder
+cp -r $TMPDIR/$USER/$SLURM_JOBID/* $RESULT_DIR
+
+# Clean up the temporary directory
+rm -rf $TMPDIR/$USER/$SLURM_JOBID
+
+
+
+exit
