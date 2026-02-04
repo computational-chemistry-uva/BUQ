@@ -1,3 +1,20 @@
+Metadata-Version: 2.4
+Name: buq
+Version: 0.1.0
+Summary: Bayesian quadrature for free energy surfaces
+Author-email: Eline Kempkes <e.k.kempkes@uva.nl>
+License: UvA
+Project-URL: homepage, https://github.com/computational-chemistry-uva/BUQ
+Project-URL: repository, https://github.com/computational-chemistry-uva/BUQ
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: numpy>=1.23
+Requires-Dist: scipy>=1.10
+Requires-Dist: matplotlib>=3.7
+Requires-Dist: emukit>=0.4.11
+Requires-Dist: gpy>=1.13.2
+Requires-Dist: paramz>=0.9.6
+
 Bayesian Umbrella Quadrature (BUQ) developed by Eline Kempkes and Alberto Pérez de Alba Ortíz 
 ----------------------------------------------------------------------------------------------
 
