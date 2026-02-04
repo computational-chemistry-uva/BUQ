@@ -1,6 +1,0 @@
-numpy>=1.23
-scipy>=1.10
-matplotlib>=3.7
-emukit>=0.4.11
-gpy>=1.13.2
-paramz>=0.9.6
