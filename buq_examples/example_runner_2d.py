@@ -29,5 +29,5 @@ print("Final #points:", runner.X_data.shape[0])
 
 # Plots
 runner.plot_fes(show=True)
-runner.plot_ivr(show=True, full=True)
+runner.plot_acq(show=True, full=True)
 runner.plot_derivatives(show=True)

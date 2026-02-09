@@ -9,7 +9,7 @@ from .kernels import (
     SumMaternWhiteGPy,
 )
 from .integration import (
-    integration_1D_trapz,
+    integration_1D,
     integration_2D_rgrid,
     integrate_from_grad,
 )
@@ -20,7 +20,7 @@ __all__ = [
     "BayesianQuadratureRunner",
     "SumRBFWhiteGPy",
     "SumMaternWhiteGPy",
-    "integration_1D_trapz",
+    "integration_1D",
     "integration_2D_rgrid",
     "integrate_from_grad",
     "AdipepFromGrid",

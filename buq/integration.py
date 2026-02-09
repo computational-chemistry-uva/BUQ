@@ -2,12 +2,10 @@ import sys
 import numpy as np
 from scipy import optimize as scipy_optimize
 
-try:
-    from scipy.integrate import cumulative_trapezoid as cumtrapz
-except ImportError:
-    from scipy.integrate import cumtrapz as cumtrapz
+from scipy.integrate import cumulative_simpson
 
-def integration_1D_trapz(
+
+def integration_1D(
     x_grid: np.ndarray,
     dA_dx: np.ndarray,
 ) -> np.ndarray:
@@ -30,7 +28,7 @@ def integration_1D_trapz(
     dA_dx = np.asarray(dA_dx).ravel()
 
     # cumulative_trapezoid integrates y(x) -> ∫ y dx
-    A = cumtrapz(dA_dx, x_grid, initial=0.0)
+    A = cumulative_simpson(dA_dx, x=x_grid, initial=0.0)
     # shift minimum to zero
     A -= np.min(A)
     return A
@@ -194,7 +192,7 @@ def integrate_from_grad(
     if coords.ndim == 1 or (coords.ndim == 2 and coords.shape[1] == 1):
         x_grid = coords.ravel()
         dA_dx = np.asarray(grad).ravel()
-        return integration_1D_trapz(x_grid, dA_dx)
+        return integration_1D(x_grid, dA_dx)
 
     # 2D case: expect (n_j, n_i, 2)
     if coords.ndim == 3 and coords.shape[2] == 2:

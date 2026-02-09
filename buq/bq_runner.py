@@ -8,7 +8,7 @@ from emukit.quadrature.methods import VanillaBayesianQuadrature
 from emukit.model_wrappers.gpy_quadrature_wrappers import  BaseGaussianProcessGPy
 from emukit.quadrature.measures import LebesgueMeasure
 from buq.systems import CollectiveVariableSystem
-from buq.integration import integration_1D_trapz, integration_2D_rgrid
+from buq.integration import integration_1D, integration_2D_rgrid
 from buq.kernels import (
     SumRBFWhiteGPy,
     SumMaternWhiteGPy) 
@@ -203,6 +203,83 @@ class BayesianQuadratureRunner:
         self.acq_function = self.config.acq_function  # "IVR", or "MI" or "US"
         self._update_fes() 
 
+
+    def initialize_from_data(self, X: np.ndarray, Y: np.ndarray) -> None:
+        """
+        Initialize the runner directly from precomputed data, without
+        calling system.get_force or system.run_simulation.
+
+        Parameters
+        ----------
+        X : ndarray, shape (n_samples, dim)
+            CV locations.
+        Y : ndarray, shape (n_samples, dim)
+            Corresponding mean forces at those CVs.
+        """
+        X = np.atleast_2d(X)
+        Y = np.atleast_2d(Y)
+
+        if X.shape[1] != self.dim:
+            raise ValueError(f"X must have shape (n, {self.dim}); got {X.shape}.")
+        if Y.shape[1] != self.dim:
+            raise ValueError(f"Y must have shape (n, {self.dim}); got {Y.shape}.")
+
+        self.X_data = X
+        self.Y_data = Y
+
+        # Build grid for prediction / integration
+        self._build_grid()
+
+        # --- Build GPy kernel (same as in initialize) ---
+        if self.config.kernel_type == "RBF":
+            base = GPy.kern.RBF(self.dim, lengthscale=self.config.lengthscale,
+                                variance=self.config.variance, ARD=True)
+        elif self.config.kernel_type == "Matern52":
+            base = GPy.kern.Matern52(self.dim, lengthscale=self.config.lengthscale,
+                                     variance=self.config.variance, ARD=True)
+        elif self.config.kernel_type == "Matern12":
+            base = GPy.kern.Exponential(self.dim, lengthscale=self.config.lengthscale,
+                                        variance=self.config.variance, ARD=True)
+        elif self.config.kernel_type == "Matern32":
+            base = GPy.kern.Matern32(self.dim, lengthscale=self.config.lengthscale,
+                                     variance=self.config.variance, ARD=True)
+        else:
+            raise ValueError(f"Unknown kernel_type '{self.config.kernel_type}'.")
+
+        white = GPy.kern.White(self.dim, variance=self.config.noise)
+        kernel = base + white
+
+        gpy_model = GPy.models.GPRegression(X=self.X_data, Y=self.Y_data, kernel=kernel)
+        if self.config.optimize_hyperparams:
+            gpy_model.optimize(messages=False, max_iters=100)
+
+        # --- Wrap in Emukit kernel and measure ---
+        if self.dim == 1:
+            bounds_list = [(self.bounds_1d[0], self.bounds_1d[1])]
+        else:
+            x_min, x_max, y_min, y_max = self.bounds_2d
+            bounds_list = [(x_min, x_max), (y_min, y_max)]
+        measure = LebesgueMeasure.from_bounds(bounds=bounds_list)
+
+        if self.config.kernel_type == "RBF":
+            emukit_kernel = SumRBFWhiteGPy(gpy_model.kern)
+            quad_kernel = QuadratureRBFLebesgueMeasure(emukit_kernel, measure)
+        elif self.config.kernel_type == "Matern52":
+            emukit_kernel = SumMaternWhiteGPy(gpy_model.kern)
+            quad_kernel = QuadratureProductMatern52LebesgueMeasure(emukit_kernel, measure)
+        elif self.config.kernel_type == "Matern12":
+            emukit_kernel = SumMaternWhiteGPy(gpy_model.kern)
+            quad_kernel = QuadratureProductMatern12LebesgueMeasure(emukit_kernel, measure)
+        elif self.config.kernel_type == "Matern32":
+            emukit_kernel = SumMaternWhiteGPy(gpy_model.kern)
+            quad_kernel = QuadratureProductMatern32LebesgueMeasure(emukit_kernel, measure)
+
+        emu_base_gp = BaseGaussianProcessGPy(kern=quad_kernel, gpy_model=gpy_model)
+        self.emukit_method = VanillaBayesianQuadrature(base_gp=emu_base_gp,
+                                                       X=self.X_data, Y=self.Y_data)
+
+        self.acq_function = self.config.acq_function
+        self._update_fes()    
     
 
 
@@ -393,7 +470,7 @@ class BayesianQuadratureRunner:
         else:
             plt.close()
     
-    def plot_ivr(
+    def plot_acq(
         self,
         weight_var: float = 1.0,
         weight_fes: float = 0.0,
@@ -627,7 +704,7 @@ class BayesianQuadratureRunner:
         grad = self._predict_grad_on_grid()  # (nx, ny, 2) in [dA/dx, dA/dy] order on (X, Y)
         if self.dim == 1:
             dA_dx = grad[:, 0]
-            self.current_fes_1d = integration_1D_trapz(self.x_grid_1d, dA_dx)
+            self.current_fes_1d = integration_1D(self.x_grid_1d, dA_dx)
         else:
             # Build grid as (Y, X) to match your previous working integration
             XY_combined = np.stack((self.Y_grid_2d, self.X_grid_2d), axis=-1)  # (nx, ny, 2): (y, x)

@@ -25,6 +25,6 @@ print("Initial FES shape:", runner.current_fes_1d.shape)
 for i in range(5):
     runner.run_one_query(weight_fes=0.5, weight_var=0.5)
     runner.plot_fes(show=True)
-    runner.plot_ivr(show=True, weight_fes=0.5, weight_var=0.5)
+    runner.plot_acq(show=True, weight_fes=0.5, weight_var=0.5)
     runner.plot_derivatives(show=True)
 

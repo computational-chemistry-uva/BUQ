@@ -4,7 +4,6 @@ from buq.sample_systems import AdipepFromGrid
 
 
 system = AdipepFromGrid()
-bounds = (-np.pi, np.pi, -np.pi, np.pi)
 
 config = BQConfig(
     kernel_type="Matern32",
@@ -20,7 +19,7 @@ config = BQConfig(
 
 initial_points = np.array([[-1.5, -1.5], [0.0, 0.0], [1.5, 1.5]])
 
-runner = BayesianQuadratureRunner(system, bounds, config)
+runner = BayesianQuadratureRunner(system, config)
 runner.initialize(initial_points)
 print("Initial FES shape (nx, ny):", runner.current_fes_2d.shape)
 
@@ -30,7 +29,7 @@ print("Final #points:", runner.X_data.shape[0])
 
 # Plots
 runner.plot_fes(show=True)
-runner.plot_ivr(show=True, full=True)
+runner.plot_acq(show=True, full=True)
 runner.plot_derivatives(show=True)
 
 
