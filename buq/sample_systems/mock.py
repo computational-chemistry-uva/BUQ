@@ -1,6 +1,6 @@
 import numpy as np
 from buq.systems import CollectiveVariableSystem
-from scipy.interpolate import RegularGridInterpolator
+from scipy.interpolate import interp1d, RegularGridInterpolator
 from pathlib import Path
 
 class Mock1DSystem(CollectiveVariableSystem):
@@ -43,8 +43,90 @@ class Mock2DSystem(CollectiveVariableSystem):
 
     def get_force(self, x: np.ndarray) -> np.ndarray:
         return np.array([x[0], x[1] * x[1]])  # [dA/dx, dA/dy] = [x, y^2]
-    
-class AdipepFromGrid(CollectiveVariableSystem):
+
+
+class Adipep1DFromGrid(CollectiveVariableSystem):
+    """
+    1D alanine dipeptide system along the phi dihedral angle.
+
+    Loads a PLUMED-style fes file with columns:
+        phi, fes, der_phi
+
+    The force returned by get_force() is der_phi (= dA/dphi),
+    consistent with the convention used in AdipepFromGrid.
+
+    Parameters
+    ----------
+    fes_path : str, optional
+        Path to the fes file. If None, looks for 'fes_adipep_phi.dat'
+        next to this module, then in the current working directory.
+    """
+
+    def __init__(self, fes_path: str = None):
+        super().__init__(dim=1, bounds=(-np.pi, np.pi))
+
+        if fes_path is None:
+            module_dir = Path(__file__).parent
+            candidate = module_dir / "fes_adipep_phi.dat"
+            if candidate.exists():
+                fes_path = str(candidate)
+            else:
+                cwd_candidate = Path("fes_adipep_phi.dat")
+                if not cwd_candidate.exists():
+                    raise FileNotFoundError(
+                        "fes_adipep_phi.dat not found. Place it next to adipep1d.py "
+                        "or in the current working directory, "
+                        "or pass fes_path to Adipep1DSystem(...)."
+                    )
+                fes_path = str(cwd_candidate)
+
+        self._load_fes(fes_path)
+
+    def _load_fes(self, path: str) -> None:
+        # Skip comment lines starting with '#'
+        data = np.loadtxt(path, comments="#")
+
+        phi    = data[:, 0]   # phi grid (rad)
+        fes    = data[:, 1]   # free energy (kJ/mol)
+        der    = data[:, 2]   # dA/dphi
+
+        self.phi_grid = phi
+        self.fes_grid = fes - np.min(fes)   # shift min to zero
+        self.der_grid = der
+
+        # Interpolators
+        self._fes_interp = interp1d(phi, self.fes_grid, kind="cubic",
+                                    fill_value="extrapolate")
+        self._der_interp = interp1d(phi, der, kind="cubic",
+                                    fill_value="extrapolate")
+
+    # ------------------------------------------------------------------
+    # Required by CollectiveVariableSystem / BayesianQuadratureRunner
+    # ------------------------------------------------------------------
+
+    def write_plumed_input(self, x: np.ndarray) -> None:
+        pass  # no-op
+
+    def run_simulation(self, x: np.ndarray) -> None:
+        pass  # no-op
+
+    def get_force(self, x: np.ndarray) -> np.ndarray:
+        """Return dA/dphi at phi = x[0]."""
+        phi_val = float(x[0])
+        return np.array([float(self._der_interp(phi_val))], dtype=float)
+
+    def true_fes(self, x: np.ndarray) -> np.ndarray:
+        """Return the reference FES value at phi = x[0]."""
+        x = np.asarray(x).ravel()
+        return self._fes_interp(x)
+
+    def true_grad(self, x: np.ndarray) -> np.ndarray:
+        """Return dA/dphi at phi = x[0]."""
+        x = np.asarray(x).ravel()
+        return self._der_interp(x)
+
+
+class Adipep2DFromGrid(CollectiveVariableSystem):
     """
     2D system using gradients from a metadynamics grid (phi, psi).
     Expects fes.dat columns: phi, psi, fes, dA/dphi, dA/dpsi on a regular 100x100 grid.
@@ -113,3 +195,8 @@ class AdipepFromGrid(CollectiveVariableSystem):
         dA_dphi = float(self._dphi_interp((phi_val, psi_val)))
         dA_dpsi = float(self._dpsi_interp((phi_val, psi_val)))
         return np.array([dA_dphi, dA_dpsi], dtype=float)
+
+
+
+
+

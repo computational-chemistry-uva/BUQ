@@ -301,3 +301,4 @@ dependencies:
       - gpy==1.13.2
       - paramz==0.9.6
       - scipy==1.12.0
+      - scikit-optimize

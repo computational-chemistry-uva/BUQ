@@ -23,9 +23,10 @@ __all__ = [
     "integration_1D",
     "integration_2D_rgrid",
     "integrate_from_grad",
-    "AdipepFromGrid",
     "Mock1DSystem",
     "Mock2DSystem",
+    "Adipep1DFromGrid",
+    "Adipep2DFromGrid",
 ]
 
 __version__ = "0.1.0"
