@@ -5,20 +5,20 @@ import GPy
 import matplotlib.pyplot as plt
 from emukit.quadrature.acquisitions import IntegralVarianceReduction, UncertaintySampling, MutualInformation
 from emukit.quadrature.methods import VanillaBayesianQuadrature
-from emukit.model_wrappers.gpy_quadrature_wrappers import  BaseGaussianProcessGPy
+from emukit.model_wrappers.gpy_quadrature_wrappers import BaseGaussianProcessGPy
 from emukit.quadrature.measures import LebesgueMeasure
 from buq.systems import CollectiveVariableSystem
 from buq.integration import integration_1D, integration_2D_rgrid
 from buq.kernels import (
     SumRBFWhiteGPy,
-    SumMaternWhiteGPy) 
+    SumMaternWhiteGPy,
+)
 from emukit.quadrature.kernels import (
-    QuadratureRBFLebesgueMeasure,   
+    QuadratureRBFLebesgueMeasure,
     QuadratureProductMatern52LebesgueMeasure,
     QuadratureProductMatern12LebesgueMeasure,
-    QuadratureProductMatern32LebesgueMeasure)
-
-
+    QuadratureProductMatern32LebesgueMeasure,
+)
 
 ArrayLike = Union[np.ndarray, List[float]]
 
@@ -41,6 +41,15 @@ class BQConfig:
 
     acq_function: str = "IVR"     # "IVR", "US" or "MI"
 
+    # NEW: how many variables are integrated over in the FES
+    # If None: all dims are integrated (old behaviour).
+    n_integrated: Optional[int] = None
+
+    # NEW: for simple slice case with extra variables (e.g. dim=2, n_integrated=1),
+    # extra_context gives the fixed value of the extra variable(s) for FES.
+    # For dim=2, n_integrated=1: this is the y/psi value at which to compute A(x, y_ctx).
+    extra_context: Optional[ArrayLike] = None
+
 
 class BayesianQuadratureRunner:
     """
@@ -52,11 +61,9 @@ class BayesianQuadratureRunner:
 
     Works for both 1D and 2D systems:
       - dim = 1: A(x)
-      - dim = 2: A(x, y)
+      - dim = 2: A(x, y) or A(x, y_ctx) when using a slice.
     """
 
-  
-class BayesianQuadratureRunner:
     def __init__(
         self,
         system: CollectiveVariableSystem,
@@ -81,7 +88,18 @@ class BayesianQuadratureRunner:
         self.dim = system.dim
         self.config = config
 
-        # --- new: default to system.bounds ---
+        # How many dims are integrated in the FES?
+        # None => integrate all dims (old behaviour).
+        if self.config.n_integrated is None:
+            self.n_integrated = self.dim
+        else:
+            self.n_integrated = int(self.config.n_integrated)
+            if not (1 <= self.n_integrated <= self.dim):
+                raise ValueError(f"n_integrated must be between 1 and dim={self.dim}")
+        # Extra context for non-integrated dims (currently used for dim=2, n_integrated=1)
+        self.extra_context = self.config.extra_context
+
+        # --- default to system.bounds if not provided ---
         if bounds is None:
             if not hasattr(system, "bounds"):
                 raise ValueError("System must define a 'bounds' attribute or pass bounds explicitly.")
@@ -100,13 +118,14 @@ class BayesianQuadratureRunner:
         else:
             raise ValueError("BayesianQuadratureRunner currently supports only dim = 1 or 2.")
 
-
         # Data and models
         self.X_data: Optional[np.ndarray] = None       # shape (n_samples, dim)
         self.Y_data: Optional[np.ndarray] = None       # shape (n_samples, dim)
 
         # Grids for prediction / integration
-        self.x_grid_1d: Optional[np.ndarray] = None    # shape (n,) for 1D
+        #  - 1D: x_grid_1d for FES; grid_flat for acquisition / derivatives
+        #  - 2D: X_grid_2d, Y_grid_2d for FES/acq; grid_flat flattened version
+        self.x_grid_1d: Optional[np.ndarray] = None    # shape (n,) for 1D or 1D slice
         self.X_grid_2d: Optional[np.ndarray] = None    # shape (nx, ny)
         self.Y_grid_2d: Optional[np.ndarray] = None    # shape (nx, ny)
         self.grid_flat: Optional[np.ndarray] = None    # shape (N, dim) flattened grid
@@ -137,7 +156,7 @@ class BayesianQuadratureRunner:
         for x in initial_points:
             print(f"Running initial simulation at x = {x}")
             try:
-                f = self.system.get_force(x)  # shape (dim,) #First check if the simulation has already been run
+                f = self.system.get_force(x)  # shape (dim,) # check if simulation already done
             except Exception:
                 self.system.run_simulation(x)
             f = self.system.get_force(x)  # shape (dim,)
@@ -147,7 +166,7 @@ class BayesianQuadratureRunner:
         self.X_data = initial_points
         self.Y_data = np.vstack(forces)  # (n_samples, dim)
 
-        # Build grid for prediction / integration
+        # Build grid for prediction / integration / acquisition
         self._build_grid()
 
         # --- Build GPy kernel ---
@@ -156,7 +175,7 @@ class BayesianQuadratureRunner:
                                 variance=self.config.variance, ARD=True)
         elif self.config.kernel_type == "Matern52":
             base = GPy.kern.Matern52(self.dim, lengthscale=self.config.lengthscale,
-                                    variance=self.config.variance, ARD=True)
+                                     variance=self.config.variance, ARD=True)
         elif self.config.kernel_type == "Matern12":
             base = GPy.kern.Exponential(self.dim, lengthscale=self.config.lengthscale,
                                         variance=self.config.variance, ARD=True)
@@ -174,6 +193,7 @@ class BayesianQuadratureRunner:
             gpy_model.optimize(messages=False, max_iters=100)
 
         # --- Wrap in Emukit kernel and measure ---
+        # Measure is over all CV dimensions (integrated + extra)
         if self.dim == 1:
             bounds_list = [(self.bounds_1d[0], self.bounds_1d[1])]
         else:
@@ -194,15 +214,14 @@ class BayesianQuadratureRunner:
             emukit_kernel = SumMaternWhiteGPy(gpy_model.kern)
             quad_kernel = QuadratureProductMatern32LebesgueMeasure(emukit_kernel, measure)
 
-
         # --- Emukit base GP and VBQ method ---
         emu_base_gp = BaseGaussianProcessGPy(kern=quad_kernel, gpy_model=gpy_model)
-        self.emukit_method = VanillaBayesianQuadrature(base_gp=emu_base_gp, X=self.X_data, Y=self.Y_data)
+        self.emukit_method = VanillaBayesianQuadrature(base_gp=emu_base_gp,
+                                                       X=self.X_data, Y=self.Y_data)
 
         # Acquisition settings from config
-        self.acq_function = self.config.acq_function  # "IVR", or "MI" or "US"
-        self._update_fes() 
-
+        self.acq_function = self.config.acq_function  # "IVR", "MI", or "US"
+        self._update_fes()
 
     def initialize_from_data(self, X: np.ndarray, Y: np.ndarray) -> None:
         """
@@ -227,7 +246,7 @@ class BayesianQuadratureRunner:
         self.X_data = X
         self.Y_data = Y
 
-        # Build grid for prediction / integration
+        # Build grid for prediction / integration / acquisition
         self._build_grid()
 
         # --- Build GPy kernel (same as in initialize) ---
@@ -279,9 +298,7 @@ class BayesianQuadratureRunner:
                                                        X=self.X_data, Y=self.Y_data)
 
         self.acq_function = self.config.acq_function
-        self._update_fes()    
-    
-
+        self._update_fes()
 
     def run(
         self,
@@ -293,28 +310,6 @@ class BayesianQuadratureRunner:
     ) -> None:
         """
         Run the adaptive loop for n_queries steps.
-
-        For each iteration:
-          1. Select next point via a variance-based acquisition (optionally combined
-             with the current FES and a user-specified path weighting).
-          2. Run simulation and read force.
-          3. Update GP models.
-          4. Recompute the FES.
-
-        Parameters
-        ----------
-        n_queries : int or None
-            Number of additional queries. If None, uses config.n_queries.
-        weight_var : float
-            Weight on predictive variance in the acquisition (analogous to IVR weight).
-        weight_fes : float
-            Weight on (scaled) FES (subtracted in acquisition, i.e. prefer low FES if > 0).
-        weight_path : float
-            Weight on an optional user-supplied sampling_grid (e.g. path bias).
-        sampling_grid : ndarray or None
-            - 1D: shape (n_grid,)
-            - 2D: shape (nx, ny)
-            Used only in acquisition (not required).
         """
         if n_queries is None:
             n_queries = self.config.n_queries
@@ -330,13 +325,9 @@ class BayesianQuadratureRunner:
                 weight_fes=weight_fes,
                 weight_path=weight_path,
                 sampling_grid=sampling_grid,
-                compute_fes=False,  # recompute FES after each query by default
+                compute_fes=False,
             )
-        self._update_fes() #always compute FES after all queries are done
-
-
-
-
+        self._update_fes()  # always compute FES after all queries are done
 
     def run_one_query(
         self,
@@ -347,16 +338,7 @@ class BayesianQuadratureRunner:
         compute_fes: bool = True,
     ) -> None:
         """
-        Perform a single adaptive query:
-          - choose next point via acquisition,
-          - run simulation,
-          - update GPs and FES.
-
-        This allows patterns like:
-
-        >>> for i in range(25):
-        ...     runner.run_one_query()
-        ...     runner.plot_fes()
+        Perform a single adaptive query.
         """
         x_next = self._select_next_point(
             weight_var=weight_var,
@@ -368,8 +350,8 @@ class BayesianQuadratureRunner:
 
         # Run simulation at x_next
         try:
-            f_next = self.system.get_force(x_next)  # check if already run (for example, in testing)
-        except Exception:   
+            f_next = self.system.get_force(x_next)  # check if already run
+        except Exception:
             self.system.run_simulation(x_next)
             f_next = self.system.get_force(x_next)
         f_next = np.asarray(f_next).reshape(1, self.dim)
@@ -383,12 +365,10 @@ class BayesianQuadratureRunner:
         if compute_fes:
             self._update_fes()
 
-
-
     # ------------------------------------------------------------------
     # Plotting
     # ------------------------------------------------------------------
-    
+
     def plot_fes(
         self,
         savepath: Optional[str] = None,
@@ -400,23 +380,13 @@ class BayesianQuadratureRunner:
         """
         Plot the current free energy estimate.
 
-        - 1D: line plot A(x) with training locations; optionally overlays a
-            reference FES (true_fes_func or system.true_fes if available).
-        - 2D: contour plot A(x, y) with training locations.
-
-        Parameters
-        ----------
-        true_fes_func : callable or None
-            If provided in 1D, a function f(x: ndarray)->ndarray returning
-            the analytical/reference FES on x-grid. If None, and the system
-            defines `true_fes(x)`, that will be used automatically.
-        align_min : bool
-            If True, shift the reference FES by its minimum to zero to match
-            the runner’s FES (which is shifted to min=0).
-        true_label : str
-            Legend label for the reference FES curve.
+        - 1D or 2D+slice (dim=2, n_integrated=1): line plot A(x).
+        - 2D full (dim=2, n_integrated=2): contour plot A(x, y).
         """
-        if self.dim == 1:
+        # Treat dim=2, n_integrated=1 as "1D FES" for plotting
+        is_1d_fes = (self.dim == 1) or (self.dim == 2 and self.n_integrated == 1)
+
+        if is_1d_fes:
             if self.current_fes_1d is None or self.x_grid_1d is None:
                 raise RuntimeError("FES not available; call initialize() first.")
 
@@ -428,7 +398,6 @@ class BayesianQuadratureRunner:
                 yq = np.interp(xq_clipped, self.x_grid_1d, self.current_fes_1d)
 
                 ax.scatter(xq_clipped, yq, color="red", marker="x", label="Queries")
-                
 
             # Optional analytical/reference curve
             ref_func = true_fes_func
@@ -443,7 +412,12 @@ class BayesianQuadratureRunner:
 
             ax.set_xlabel("CV")
             ax.set_ylabel("Free energy (arb. units)")
-            ax.set_title("Bayesian Quadrature FES (1D)")
+            title = "Bayesian Quadrature FES (1D"
+            if self.dim == 2 and self.n_integrated == 1:
+                title += " slice)"
+            else:
+                title += ")"
+            ax.set_title(title)
             ax.legend()
 
         else:
@@ -452,12 +426,12 @@ class BayesianQuadratureRunner:
 
             fig, ax = plt.subplots(figsize=(7, 6))
             contour = ax.contourf(self.X_grid_2d, self.Y_grid_2d, self.current_fes_2d,
-                                levels=100, cmap="viridis")
+                                  levels=100, cmap="viridis")
             cbar = fig.colorbar(contour, ax=ax)
             cbar.set_label("Free energy (arb. units)")
             if self.X_data is not None:
                 ax.scatter(self.X_data[:, 0], self.X_data[:, 1],
-                        color="white", edgecolor="black", s=20, label="Queries")
+                           color="white", edgecolor="black", s=20, label="Queries")
                 ax.legend()
             ax.set_xlabel("CV1")
             ax.set_ylabel("CV2")
@@ -469,7 +443,7 @@ class BayesianQuadratureRunner:
             plt.show()
         else:
             plt.close()
-    
+
     def plot_acq(
         self,
         weight_var: float = 1.0,
@@ -481,21 +455,7 @@ class BayesianQuadratureRunner:
         full: bool = True,
     ) -> None:
         """
-        Plot a variance-based "IVR-like" acquisition:
-
-        - 2D: three panels (variance, scaled FES, combined acquisition) as in your
-        original code; this mirrors your old IVR/FES/combined plots.
-        - 1D: lines for variance, FES, and combined acquisition.
-
-        The acquisition used here is:
-
-            acq = weight_var * (var_norm)
-                - weight_fes * (fes_norm)
-                + weight_path * sampling_grid
-
-        where "var_norm" is predictive variance normalized by its max,
-        and "fes_norm" is the FES normalized by its max. This can be
-        replaced by true IVR later if you wire in Emukit.
+        Plot variance-based acquisition plus FES term and path term.
         """
         var_norm, fes_norm, acq = self._compute_acquisition_grid(
             weight_var=weight_var,
@@ -660,14 +620,13 @@ class BayesianQuadratureRunner:
             else:
                 plt.close()
 
-
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
     def _build_grid(self) -> None:
         """
-        Create the grid where we predict gradients and integrate to get FES.
+        Create the grid where we predict gradients / acquisitions, and integrate to get FES.
         """
         if self.dim == 1:
             x_min, x_max = self.bounds_1d
@@ -682,8 +641,11 @@ class BayesianQuadratureRunner:
             self.grid_flat = np.vstack(
                 [self.X_grid_2d.ravel(), self.Y_grid_2d.ravel()]
             ).T  # (nx * ny, 2)
-   
+
     def _predict_grad_on_grid(self) -> np.ndarray:
+        """
+        Predict gradients on the full grid (used for full integration n_integrated == dim).
+        """
         if self.grid_flat is None:
             self._build_grid()
         if self.emukit_method is None or not hasattr(self.emukit_method, "predict"):
@@ -701,23 +663,64 @@ class BayesianQuadratureRunner:
             return grad_flat.reshape(nx, ny, self.dim)
 
     def _update_fes(self) -> None:
-        grad = self._predict_grad_on_grid()  # (nx, ny, 2) in [dA/dx, dA/dy] order on (X, Y)
-        if self.dim == 1:
-            dA_dx = grad[:, 0]
-            self.current_fes_1d = integration_1D(self.x_grid_1d, dA_dx)
+        """
+        Compute current FES from the GP-predicted gradients.
+
+        - If n_integrated == dim:
+            * dim=1: integrate over x to get A(x).
+            * dim=2: integrate over (x, y) to get A(x, y) on a 2D grid.
+        - If dim=2 and n_integrated == 1:
+            * integrate over the first CV only (x),
+              treating the second CV (y) as an extra variable fixed
+              at extra_context (or in the middle of its bounds).
+        """
+        # Full integration over all dims (original behaviour)
+        if self.n_integrated == self.dim:
+            grad = self._predict_grad_on_grid()
+            if self.dim == 1:
+                dA_dx = grad[:, 0]
+                self.current_fes_1d = integration_1D(self.x_grid_1d, dA_dx)
+            else:
+                # Build grid as (Y, X) to match your integration routine
+                XY_combined = np.stack((self.Y_grid_2d, self.X_grid_2d), axis=-1)  # (nx, ny, 2): (y, x)
+                # Swap derivative components to (dA/dy, dA/dx) to match grid channels
+                derivative_xy_combined = grad[:, :, [1, 0]]  # (nx, ny, 2): (dy, dx)
+
+                self.current_fes_2d = integration_2D_rgrid(
+                    XY_combined,
+                    derivative_xy_combined,
+                    integrator="simpson+mini" if self.config.use_mini else "simpson",
+                    fast=self.config.fast_mini,
+                )
         else:
-            # Build grid as (Y, X) to match your previous working integration
-            XY_combined = np.stack((self.Y_grid_2d, self.X_grid_2d), axis=-1)  # (nx, ny, 2): (y, x)
+            # Mixed mode: currently only support dim=2, n_integrated=1 (one integrated, one extra)
+            if not (self.dim == 2 and self.n_integrated == 1):
+                raise NotImplementedError(
+                    f"_update_fes: mixed mode only implemented for dim=2, n_integrated=1; "
+                    f"got dim={self.dim}, n_integrated={self.n_integrated}"
+                )
 
-            # Swap derivative components to (dA/dy, dA/dx) to match grid channels
-            derivative_xy_combined = grad[:, :, [1, 0]]  # (nx, ny, 2): (dy, dx)
+            # Integrated variable = first CV (x), extra variable = second CV (y)
+            x_min, x_max, y_min, y_max = self.bounds_2d
+            if self.x_grid_1d is None:
+                self.x_grid_1d = np.linspace(x_min, x_max, num=self.config.grid_size_1d)
 
-            self.current_fes_2d = integration_2D_rgrid(
-                XY_combined,
-                derivative_xy_combined,
-                integrator="simpson+mini" if self.config.use_mini else "simpson",
-                fast=self.config.fast_mini,
+            # Choose context value for extra variable (y)
+            if self.extra_context is None:
+                y_ctx = 0.5 * (y_min + y_max)
+            else:
+                y_ctx = float(np.atleast_1d(self.extra_context)[0])
+
+            # Build prediction grid for FES slice: (x, y_ctx)
+            X_pred_fes = np.column_stack(
+                [self.x_grid_1d, y_ctx * np.ones_like(self.x_grid_1d)]
             )
+            mean_fes, _ = self.emukit_method.predict(X_pred_fes)
+            mean_fes = np.asarray(mean_fes).reshape(-1, self.dim)
+
+            # Integrate derivative w.r.t integrated dim (first component)
+            dA_dx = mean_fes[:, 0]
+            self.current_fes_1d = integration_1D(self.x_grid_1d, dA_dx)
 
     def _compute_acquisition_grid(self, weight_var, weight_fes, weight_path, sampling_grid):
         if self.grid_flat is None:
@@ -760,6 +763,7 @@ class BayesianQuadratureRunner:
 
         combined = weight_var * acq_norm - weight_fes * fes_norm + weight_path * sampling_term
         return acq_norm, fes_norm, combined
+
 
     def _select_next_point(
         self,
