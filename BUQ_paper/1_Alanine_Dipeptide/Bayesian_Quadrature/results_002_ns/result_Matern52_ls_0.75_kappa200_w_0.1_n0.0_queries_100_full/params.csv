@@ -1,0 +1,6 @@
+lengthscale,acq_function,queries,weight_acq_fes,noise,kernel_type,full,kappa
+0.75,IVR,100,0.1,0.0,Matern52,True,200
+0.75,IVR,100,0.1,0.0,Matern52,True,200
+0.75,IVR,100,0.1,0.0,Matern52,True,200
+0.75,IVR,100,0.1,0.0,Matern52,True,200
+0.75,IVR,100,0.1,0.0,Matern52,True,200

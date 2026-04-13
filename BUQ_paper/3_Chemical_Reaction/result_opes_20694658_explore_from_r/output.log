@@ -1,0 +1,131 @@
+ /home/ekempkes/.conda/envs/emu_mace/lib/python3.10/site-packages/e3nn/o3/_wigner.py:10: UserWarning:Environment variable TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD detected, since the`weights_only` argument was not explicitly passed to `torch.load`, forcing weights_only=False.
+ /home/ekempkes/.conda/envs/emu_mace/lib/python3.10/site-packages/mace/calculators/mace.py:199: UserWarning:Environment variable TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD detected, since the`weights_only` argument was not explicitly passed to `torch.load`, forcing weights_only=False.
+WARNING:root:No dtype selected, switching to float64 to match model dtype.
++++ Loading the PLUMED kernel runtime +++
++++ PLUMED_KERNEL="/home/ekempkes/software/plumed2_ice/src/lib/libplumedKernel.so" +++
+PLUMED: PLUMED is starting
+PLUMED: Version: 2.9.4 (git: 0cb85a69b) compiled on Mar  2 2026 at 16:07:34
+PLUMED: Please cite these papers when using PLUMED [1][2]
+PLUMED: For further information see the PLUMED web page at http://www.plumed.org
+PLUMED: Root: /gpfs/home1/ekempkes/software/plumed2_ice/
+PLUMED: For installed feature, see /gpfs/home1/ekempkes/software/plumed2_ice//src/config/config.txt
+PLUMED: Molecular dynamics engine: ASE
+PLUMED: Precision of reals: 8
+PLUMED: Running over 1 node
+PLUMED: Number of threads: 1
+PLUMED: Cache line size: 512
+PLUMED: Number of atoms: 9
+PLUMED: File suffix: 
+PLUMED: Timestep: 0.000500
+PLUMED: KbT: 96.485333
+PLUMED: Relevant bibliography:
+PLUMED:   [1] The PLUMED consortium, Nat. Methods 16, 670 (2019)
+PLUMED:   [2] Tribello, Bonomi, Branduardi, Camilloni, and Bussi, Comput. Phys. Commun. 185, 604 (2014)
+PLUMED: Please read and cite where appropriate!
+PLUMED: Finished setup
+PLUMED: Action UNITS
+PLUMED:   with label @0
+PLUMED:   length: A = 0.1 nm
+PLUMED:   energy: kj/mol
+PLUMED:   time: ps
+PLUMED:   charge: e
+PLUMED:   mass: amu
+PLUMED:   using physical units
+PLUMED:   inside PLUMED, Boltzmann constant is 0.00831446
+PLUMED: Action DISTANCE
+PLUMED:   with label d1
+PLUMED:   between atoms 1 4
+PLUMED:   without periodic boundary conditions
+PLUMED: Action DISTANCE
+PLUMED:   with label d2
+PLUMED:   between atoms 1 5
+PLUMED:   without periodic boundary conditions
+PLUMED: Action OPES_METAD_EXPLORE
+PLUMED:   with label opes
+PLUMED:   with arguments d1 d2
+PLUMED:   added component to this action:  opes.bias 
+PLUMED:  +++ WARNING +++ using TEMP=300 while MD engine uses 11604.5
+PLUMED:   added component to this action:  opes.rct 
+PLUMED:   added component to this action:  opes.zed 
+PLUMED:   added component to this action:  opes.neff 
+PLUMED:   added component to this action:  opes.nker 
+PLUMED:   temperature = 300
+PLUMED:   beta = 0.400908
+PLUMED:   depositing new kernels with PACE = 500
+PLUMED:   expected BARRIER is 200
+PLUMED:   using target distribution with BIASFACTOR gamma = 80.1816
+PLUMED:   adaptive SIGMA will be used, with ADAPTIVE_SIGMA_STRIDE = 5000
+PLUMED:     thus the first x kernel depositions will be skipped, x = ADAPTIVE_SIGMA_STRIDE/PACE = 10
+PLUMED:   kernels are truncated with KERNELS_CUTOFF = 12.6635
+PLUMED:   the value at cutoff is = 1.50517e-35
+PLUMED:   regularization EPSILON = 0.363263
+PLUMED:   kernels will be compressed when closer than COMPRESSION_THRESHOLD = 1
+PLUMED:   state checkpoints are written on file STATE every 1000 MD steps
+PLUMED:   Bibliography: [1][2]
+PLUMED: Relevant bibliography:
+PLUMED:   [1] M. Invernizzi and M. Parrinello, J. Phys. Chem. Lett. 11, 2731-2736 (2020)
+PLUMED:   [2] M. Invernizzi and M. Parrinello, J. Chem. Theory Comput. 18, 3988-3996 (2022)
+PLUMED: Please read and cite where appropriate!
+PLUMED: Action ENERGY
+PLUMED:   with label ener
+PLUMED:   Bibliography [1][2]
+PLUMED: Relevant bibliography:
+PLUMED:   [1] Bartels and Karplus, J. Phys. Chem. B 102, 865 (1998)
+PLUMED:   [2] Bonomi and Parrinello, J. Comp. Chem. 30, 1615 (2009)
+PLUMED: Please read and cite where appropriate!
+PLUMED: Action ANGLE
+PLUMED:   with label an
+PLUMED:   between lines 1-2 and 4-5
+PLUMED:   without periodic boundary conditions
+PLUMED: Action RESTRAINT
+PLUMED:   with label res
+PLUMED:   with arguments an
+PLUMED:   added component to this action:  res.bias 
+PLUMED:   at 1.570796
+PLUMED:   with harmonic force constant 100.000000
+PLUMED:   and linear force constant 0.000000
+PLUMED:   added component to this action:  res.force2 
+PLUMED: Action ANGLE
+PLUMED:   with label an2
+PLUMED:   between atoms 1 5 4
+PLUMED:   without periodic boundary conditions
+PLUMED: Action RESTRAINT
+PLUMED:   with label res2
+PLUMED:   with arguments an2
+PLUMED:   added component to this action:  res2.bias 
+PLUMED:   at 0.000000
+PLUMED:   with harmonic force constant 100.000000
+PLUMED:   and linear force constant 0.000000
+PLUMED:   added component to this action:  res2.force2 
+PLUMED: Action LOWER_WALLS
+PLUMED:   with label lwall
+PLUMED:   with arguments d1 d2
+PLUMED:   added component to this action:  lwall.bias 
+PLUMED:   at 1.200000 1.800000
+PLUMED:   with an offset 0.000000 0.000000
+PLUMED:   with force constant 600.000000 600.000000
+PLUMED:   and exponent 2.000000 2.000000
+PLUMED:   rescaled 1.000000 1.000000
+PLUMED:   added component to this action:  lwall.force2 
+PLUMED: Action UPPER_WALLS
+PLUMED:   with label uwall
+PLUMED:   with arguments d1 d2
+PLUMED:   added component to this action:  uwall.bias 
+PLUMED:   at 2.800000 3.500000
+PLUMED:   with an offset 0.000000 0.000000
+PLUMED:   with force constant 600.000000 600.000000
+PLUMED:   and exponent 2.000000 2.000000
+PLUMED:   rescaled 1.000000 1.000000
+PLUMED:   added component to this action:  uwall.force2 
+PLUMED: Action PRINT
+PLUMED:   with label @11
+PLUMED:   with stride 100
+PLUMED:   with arguments d1 d2 opes.bias
+PLUMED:   on file COLVAR
+PLUMED:   with format  %f
+PLUMED: Action FLUSH
+PLUMED:   with label @12
+PLUMED:   with stride 500
+ /home/ekempkes/.conda/envs/emu_mace/lib/python3.10/site-packages/matscipy/neighbours.py:718: RuntimeWarning:Ratio of simulation cell size to cutoff is very large; reducing number of bins for neighbour list search, but this may be slow. Are you using a cell with lots of vacuum?
+srun: Job step aborted: Waiting up to 32 seconds for job step to finish.
+[2026-03-17T14:01:28.006] error: *** STEP 20694658.0 ON gcn99 CANCELLED AT 2026-03-17T14:01:28 DUE TO TIME LIMIT ***

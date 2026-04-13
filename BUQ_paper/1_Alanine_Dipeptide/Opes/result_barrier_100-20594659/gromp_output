@@ -1,0 +1,71 @@
+       :-) GROMACS - gmx grompp, 2023.3-EasyBuild_4.9.1_PLUMED_2.9.0 (-:
+
+Executable:   /sw/arch/RHEL8/EB_production/2023/software/GROMACS/2023.3-foss-2023a-CUDA-12.1.1-PLUMED-2.9.0/bin/gmx_mpi
+Data prefix:  /sw/arch/RHEL8/EB_production/2023/software/GROMACS/2023.3-foss-2023a-CUDA-12.1.1-PLUMED-2.9.0
+Working dir:  /gpfs/home1/ekempkes/adipep_2D_opes/result_barrier_100-20594659
+Command line:
+  gmx_mpi grompp -f run.mdp -c confout.gro -p topol.top -o md.tpr -maxwarn 1
+
+Ignoring obsolete mdp entry 'ns_type'
+Replacing old mdp entry 'nstxtcout' by 'nstxout-compressed'
+Replacing old mdp entry 'xtc-precision' by 'compressed-x-precision'
+
+NOTE 1 [file run.mdp]:
+  With Verlet lists the optimal nstlist is >= 10, with GPUs >= 20. Note
+  that with the Verlet scheme, nstlist has no effect on the accuracy of
+  your simulation.
+
+
+WARNING 1 [file run.mdp]:
+  Removing the rotation around the center of mass in a periodic system,
+  this can lead to artifacts. Only use this on a single (cluster of)
+  molecules. This cluster should not cross periodic boundaries.
+
+Generating 1-4 interactions: fudge = 0.5
+Number of degrees of freedom in T-Coupling group System is 48.00
+
+NOTE 2 [file run.mdp]:
+  The optimal PME mesh load for parallel simulations is below 0.5
+  and for highly parallel simulations between 0.25 and 0.33,
+  for higher performance, increase the cut-off and the PME grid spacing.
+
+
+
+There were 2 NOTEs
+
+There was 1 WARNING
+
+GROMACS reminds you: "A tidy laboratory means a lazy chemist." (J.J. Berzelius)
+
+Setting the LD random seed to -1613392390
+
+Generated 2145 of the 2145 non-bonded parameter combinations
+
+Generated 2145 of the 2145 1-4 parameter combinations
+
+Excluding 3 bonded neighbours molecule type 'Protein'
+
+turning H bonds into constraints...
+
+Setting gen_seed to -1707475731
+
+Velocities were taken from a Maxwell distribution at 300 K
+Analysing residue names:
+There are:     3    Protein residues
+Analysing Protein...
+
+The largest distance between excluded atoms is 0.383 nm between atom 9 and 19
+
+Determining Verlet buffer for a tolerance of 0.005 kJ/mol/ps at 300 K
+
+Calculated rlist for 1x1 atom pair-list as 1.000 nm, buffer size 0.000 nm
+
+Set rlist, assuming 4x4 atom pair-list, to 1.000 nm, buffer size 0.000 nm
+
+Note that mdrun will redetermine rlist based on the actual pair-list setup
+Calculating fourier grid dimensions for X Y Z
+Using a fourier grid of 24x24x24, spacing 0.113 0.113 0.113
+
+Estimate for the relative computational load of the PME mesh part: 0.97
+
+This run will generate roughly 470 Mb of data

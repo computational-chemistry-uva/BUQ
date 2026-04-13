@@ -1,0 +1,8 @@
+Experiment Name: PT_Matern52_ls_0.2_0.2_w_fes0.2__w_path0.0_n0.0_full_50
+Lengthscale: (0.2, 0.2)
+Queries: 50
+Weight Acquisition FES: 0.2
+Kernel: Matern52
+noise: 0.0
+
+RMSD Results:
