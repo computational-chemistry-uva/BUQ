@@ -4,7 +4,7 @@ import os
 
 
 
-def get_force(phi_value, psi_value, kappa_phi=200, kappa_psi=200, measure_after_ps=1000):
+def get_force(phi_value, psi_value, kappa_phi=200, kappa_psi=200, measure_after_ps=20):
     """
     Gets the force after doing a restraint md simulation
     
