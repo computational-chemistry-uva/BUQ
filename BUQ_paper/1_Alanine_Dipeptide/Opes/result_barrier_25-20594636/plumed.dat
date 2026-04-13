@@ -1,0 +1,22 @@
+# vim:ft=plumed
+MOLINFO STRUCTURE=diala.pdb 
+
+# Compute the backbone dihedral angle phi, defined by atoms C-N-CA-C
+# you might want to use MOLINFO shortcuts
+phi: TORSION ATOMS=@phi-2
+# Compute the backbone dihedral angle psi, defined by atoms N-CA-C-N
+psi: TORSION ATOMS=@psi-2
+# Activate well-tempered metadynamics in phi
+
+opes: OPES_METAD ...
+  ARG=phi,psi
+  PACE=500
+  BARRIER=25
+  STATE_WFILE=STATE 
+  STORE_STATES
+  STATE_WSTRIDE=10000
+...
+
+
+# Print the collective variables to a file for analysis
+PRINT STRIDE=100 FILE=COLVAR ARG=phi,psi,opes.bias

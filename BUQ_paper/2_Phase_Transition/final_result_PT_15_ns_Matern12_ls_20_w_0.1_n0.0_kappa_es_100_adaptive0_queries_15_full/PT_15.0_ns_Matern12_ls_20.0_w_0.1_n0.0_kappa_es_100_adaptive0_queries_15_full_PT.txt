@@ -1,0 +1,24 @@
+Experiment Name: PT_15.0_ns_Matern12_ls_20.0_w_0.1_n0.0_kappa_es_100_adaptive0_queries_15_full
+Lengthscale: 20.0
+Queries: 15
+Weight Acquisition FES: 0.1
+Kernel: Matern12
+noise: 0.0
+kappa_vol: 100.0
+
+RMSD Results:
+95.456543
+55.148607
+57.087627
+36.023516
+25.315411
+26.675664
+23.240569
+16.131552
+16.501721
+17.310062
+17.448807
+11.281674
+11.283802
+8.794495
+8.835574

@@ -1,0 +1,41 @@
+#!/bin/bash
+#SBATCH --job-name=bq_chemical
+#SBATCH --output=bq_chemical_%A_%a.log
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --partition=rome        # or gpu_mig etc.
+#SBATCH --cpus-per-task=16
+#SBATCH --time=5-00:00:00
+#SBATCH --array=0-0 #99             # 10 x 10 grid
+
+# --- Environment ---
+
+module purge
+module load 2023
+module load foss/2023a
+PYTHON="/home/ekempkes/.conda/envs/emu_mace/bin/python"
+source ~/software/plumed2_ice/sourceme.sh
+
+# --- Info ---
+
+pwd; hostname; date
+echo "SLURM_JOBID=$SLURM_JOBID"
+echo "SLURM_ARRAY_TASK_ID=$SLURM_ARRAY_TASK_ID"
+
+ulimit -S -c 0
+ulimit -s unlimited
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+
+# --- Shared working directory ---
+
+SUBMIT_DIR="$SLURM_SUBMIT_DIR"
+cd "$SUBMIT_DIR"
+
+# shared colvars dir for all tasks
+mkdir -p colvars
+
+# make sure the inputs are here: opes_sn2.py, p.xyz, MACE_2_swa.model
+
+echo "Starting Python at: $(date)"
+srun $PYTHON grid_force.py "$SLURM_ARRAY_TASK_ID" &> output_gridforce.log
+echo "Finished Python at: $(date)"
