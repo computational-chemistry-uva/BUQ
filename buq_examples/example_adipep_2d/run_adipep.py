@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 from buq import BQConfig, BayesianQuadratureRunner
@@ -11,24 +12,26 @@ system = Adipep(
 )
 
 config = BQConfig(
-    kernel_type="Matern32",
+    kernel_type="Matern52",
     lengthscale=np.array([0.6]),
     noise=1e-6,
     variance=1.0,
-    n_queries=3,
+    n_queries=2,
     grid_size_2d=(100, 100),
     use_mini=True,
     fast_mini=True,
     acq_function="IVR",
 )
 
-initial_points = np.array([[-1.5, -1.5], [0.0, 0.0], [1.5, 1.5]])
+initial_points = np.array([[-1.507964474, 1.193805208 ],  [0.879645943, -0.879645943]])
 
 runner = BayesianQuadratureRunner(system, config)
 runner.initialize(initial_points)
-initial_queries = 100
+initial_queries = 5
 
 runner.run(n_queries=initial_queries, weight_var=1.0, weight_fes=0.0, weight_path=0.0)
+
+
 
 data = np.genfromtxt("simulations_essentials/fes.dat")
 phi = data[:, 0].reshape(100, 100) #then reshape to 100x100 and transpose to get correct orientation for contourf
@@ -40,7 +43,11 @@ rmsd = []
 vmin, vmax = ground_truth_fes.min(), ground_truth_fes.max()
 diff_min, diff_max = -2.5, 20
 
-for i in range(initial_queries + 1, initial_queries + 11):
+
+os.makedirs("plots", exist_ok=True)
+
+#also make some plots, with additional queries
+for i in range(initial_queries + 1, initial_queries + 3):
     runner.run_one_query(weight_var=1.0, weight_fes=0.0)
     bq_fes = runner.current_fes_2d
 
